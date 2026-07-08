@@ -71,7 +71,7 @@ export function renderDashboard(container, state) {
         <h1 class="text-2xl font-black tracking-tight">${esc(c.title.toUpperCase())}</h1>
         <p class="text-sm font-bold text-neutral-500">
           ${inWindow ? `Week ${wk} of ${total}` :
-            (today < c.startDate ? `Starts ${c.startDate}` : 'Challenge finished')}</p>
+            (today < c.startDate ? `Starts ${esc(c.startDate)}` : 'Challenge finished')}</p>
       </header>
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
       ${card(`<h3 class="mb-2 font-black">WEIGHT · % FROM START</h3>

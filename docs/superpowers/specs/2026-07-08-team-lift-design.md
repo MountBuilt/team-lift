@@ -13,14 +13,12 @@ Core metrics per person per day:
 
 - Bodyweight (kg, one decimal allowed)
 - Steps (daily total)
-- Workout session (multi-select body parts — "workout", not "gym", so home
-  sessions count)
+- Workout session (multi-select body parts: arms, shoulders, legs, chest, back, core, full body, stretching)
 
 Philosophy:
 
 - Team-focused dashboard first; a small private "Me" view second
-- Motivating, never shaming — no leaderboards, no rankings, no absolute weights
-  on shared charts
+- Motivating, competitive
 - The only target is **3+ workout sessions per week** per person
 - Minimal barriers to use: one form, few taps, instant updates
 - Deliberately simple, short-term tool; rebuild properly if it outlives the
@@ -90,8 +88,8 @@ Document ID is `userId_date` — one entry per person per day by construction.
 }
 ```
 
-Workout part options: arms, chest, legs, back, core, shoulders, cardio,
-stretching, full body.
+Workout part options: arms, shoulders, legs, chest, back, core, full body,
+stretching.
 
 ### `config/challenge`
 

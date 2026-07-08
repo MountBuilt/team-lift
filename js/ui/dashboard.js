@@ -3,7 +3,7 @@ import {
 } from '../lib/aggregate.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
 import { renderFeed } from './feed.js';
-import { esc } from '../lib/esc.js';
+import { esc, safeColor } from '../lib/esc.js';
 
 const card = (inner, extra = '') =>
   `<section class="rounded-2xl bg-card border border-edge p-4 ${extra}">${inner}</section>`;
@@ -37,7 +37,7 @@ function workoutsPanel(state, monday) {
     const streak = streakWeeks(state.entries, u.id, monday);
     return `
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
-        <span class="w-20 truncate font-bold" style="color:${u.color}">${esc(u.name)}
+        <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
           ${streak >= 2 ? '<span title="' + streak + '-week streak">🔥</span>' : ''}</span>
         ${dotsRow(dots, count)}
         <span class="w-16 text-right text-sm ${count >= 3 ? 'font-black text-green-400' : 'text-neutral-400'}">

@@ -1,6 +1,6 @@
 import { entriesInWindow, weeklyWorkoutCount } from '../lib/aggregate.js';
 import { formatShort, todayStr, mondayOf } from '../lib/dates.js';
-import { esc } from '../lib/esc.js';
+import { esc, safeColor } from '../lib/esc.js';
 
 let meChart = null;
 
@@ -18,7 +18,7 @@ export function renderMe(container, state, { onEdit, onLogout }) {
     if (typeof e.steps === 'number') bits.push(`${e.steps.toLocaleString()} steps`);
     if (e.workoutParts?.length) bits.push(esc(e.workoutParts.join(' + ')));
     return `
-      <button data-date="${e.date}" class="entry-row flex w-full items-baseline justify-between gap-3
+      <button data-date="${esc(e.date)}" class="entry-row flex w-full items-baseline justify-between gap-3
         border-b border-edge/60 py-3 text-left last:border-0 active:bg-ink">
         <span class="text-sm font-bold">${e.date === todayStr() ? 'Today' : formatShort(e.date)}</span>
         <span class="text-sm text-neutral-400 text-right">${bits.join(' · ') || '—'}</span>
@@ -28,7 +28,7 @@ export function renderMe(container, state, { onEdit, onLogout }) {
   container.innerHTML = `
     <div class="flex flex-col gap-3 px-4 pb-28 pt-5">
       <header class="flex items-baseline justify-between px-1">
-        <h1 class="text-2xl font-black" style="color:${me.color}">${esc(me.name.toUpperCase())}</h1>
+        <h1 class="text-2xl font-black" style="color:${safeColor(me.color)}">${esc(me.name.toUpperCase())}</h1>
         <span class="text-sm font-bold ${wkCount >= 3 ? 'text-green-400' : 'text-neutral-500'}">
           ${wkCount}/3 workouts this week</span>
       </header>

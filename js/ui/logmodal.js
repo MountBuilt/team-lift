@@ -43,7 +43,7 @@ export function openLogModal(dateStr = todayStr()) {
         <button type="button" id="log-close" class="text-2xl text-neutral-500 px-2">✕</button>
       </div>
       <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Date
-        <input id="log-date" type="date" value="${dateStr}" max="${todayStr()}"
+        <input id="log-date" type="date" value="${esc(dateStr)}" max="${todayStr()}"
           class="rounded-xl bg-ink border border-edge px-4 py-3 text-lg text-neutral-100">
       </label>
       <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Weight (kg)

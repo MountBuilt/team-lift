@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { esc } from '../js/lib/esc.js';
+import { esc, safeColor } from '../js/lib/esc.js';
 
 test('escapes the five HTML-sensitive characters', () => {
   assert.equal(esc('&'), '&amp;');
@@ -23,4 +23,21 @@ test('passes a plain string through unchanged', () => {
 
 test('coerces non-strings via String()', () => {
   assert.equal(esc(42), '42');
+});
+
+test('safeColor passes a valid 6-digit hex through unchanged', () => {
+  assert.equal(safeColor('#22d3ee'), '#22d3ee');
+  assert.equal(safeColor('#ABCDEF'), '#ABCDEF');
+});
+
+test('safeColor falls back on an injection string', () => {
+  assert.equal(safeColor('red;background:url(x)"onload=alert(1)'), '#f97316');
+  assert.equal(safeColor('#22d3ee', '#000000'), '#22d3ee');
+  assert.equal(safeColor('nope', '#000000'), '#000000');
+});
+
+test('safeColor falls back on a non-string', () => {
+  assert.equal(safeColor(null), '#f97316');
+  assert.equal(safeColor(undefined), '#f97316');
+  assert.equal(safeColor(123), '#f97316');
 });

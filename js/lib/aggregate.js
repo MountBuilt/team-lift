@@ -1,5 +1,5 @@
 // Pure aggregation over entries/users/challenge. No Firebase, no DOM.
-import { addDays, dateRange, weekdayIndex, mondayOf } from './dates.js';
+import { addDays, dateRange, weekdayIndex } from './dates.js';
 
 const hasWorkout = (entry) => Array.isArray(entry.workoutParts) && entry.workoutParts.length > 0;
 
@@ -15,6 +15,8 @@ export function weightSeries(entries, users, challenge) {
       .sort((a, b) => a.date < b.date ? -1 : 1);
     if (points.length === 0) return null;
     const baseline = points[0].weight;
+    // A zero/invalid baseline would make every pct Infinity/NaN — omit the user.
+    if (!(baseline > 0)) return null;
     return {
       userId: u.id, name: u.name, color: u.color,
       points: points.map(p => ({

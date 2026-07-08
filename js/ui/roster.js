@@ -1,11 +1,11 @@
 import { loginAs, signup } from '../state.js';
-import { esc } from '../lib/esc.js';
+import { esc, safeColor } from '../lib/esc.js';
 
 export function renderRoster(container, users, onLoggedIn) {
   const names = users.map(u => `
     <button data-id="${u.id}" class="roster-name w-full rounded-xl bg-card border border-edge
       px-4 py-4 text-lg font-bold text-left active:border-accent"
-      style="border-left: 4px solid ${u.color}">${esc(u.name)}</button>`).join('');
+      style="border-left: 4px solid ${safeColor(u.color)}">${esc(u.name)}</button>`).join('');
 
   container.innerHTML = `
     <div class="flex min-h-screen flex-col justify-center gap-6 px-6 py-10 max-w-sm mx-auto">

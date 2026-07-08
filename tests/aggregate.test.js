@@ -45,6 +45,16 @@ test('weightSeries omits users with no in-window weight', () => {
   assert.equal(s[0].userId, 'u1');
 });
 
+test('weightSeries omits a user whose only weight is a zero baseline', () => {
+  const entries = [
+    e('u1', '2026-07-06', { weight: 90 }),
+    e('u2', '2026-07-06', { weight: 0 })
+  ];
+  const s = weightSeries(entries, users, challenge);
+  assert.equal(s.length, 1);
+  assert.equal(s[0].userId, 'u1');
+});
+
 test('stepsMatrix aligns values to dates, capped at today', () => {
   const entries = [e('u1', '2026-07-06', { steps: 8000 }), e('u2', '2026-07-07', { steps: 12000 })];
   const m = stepsMatrix(entries, users, challenge, '2026-07-08');

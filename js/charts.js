@@ -1,4 +1,4 @@
-import { weightSeries, stepsMatrix, chartWindow } from './lib/aggregate.js';
+import { weightSeries, stepsMatrix, chartWindow, weightAxisBounds } from './lib/aggregate.js';
 import { todayStr, formatShort, dateRange } from './lib/dates.js';
 
 let weightChart = null;
@@ -85,7 +85,8 @@ function drawWeight(state) {
           }
         },
         y: {
-          grace: 5, grid: { color: GRID },
+          ...weightAxisBounds(series.flatMap(s => s.points.map(p => p.kg))),
+          grid: { color: GRID },
           ticks: { color: TICK, stepSize: 10, callback: (v) => `${v}` }
         }
       }

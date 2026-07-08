@@ -1,5 +1,5 @@
 // App-wide constants. firebaseConfig is filled in by the infra task.
-export const APP_PASSWORD = 'LIFT2026';
+export const APP_PASSWORD = 'timhart';
 
 // Categorical palette chosen for distinctness on a dark background.
 export const PALETTE = [

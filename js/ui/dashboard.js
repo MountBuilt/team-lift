@@ -2,11 +2,16 @@ import {
   teamTiles, workoutDots, weeklyWorkoutCount, streakWeeks
 } from '../lib/aggregate.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
+import { stepsComment, workoutsComment, weightComment } from '../lib/banter.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 
 const card = (inner, extra = '') =>
   `<section class="rounded-2xl bg-card border border-edge p-4 ${extra}">${inner}</section>`;
+
+// Daily-rotating quip under a card; null comment renders nothing.
+const quip = (comment) => comment
+  ? `<p class="mt-2 text-xs italic leading-relaxed text-neutral-500">${esc(comment)}</p>` : '';
 
 function tilesHtml(t) {
   const tile = (big, small, hot = false) => `
@@ -76,11 +81,13 @@ export function renderDashboard(container, state) {
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
       ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>`)}
+        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>
+        ${quip(weightComment(state.entries, state.users, today))}`)}
       ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet — be the first!</p>`)}
-      ${card(workoutsPanel(state, monday))}
+        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet — be the first!</p>
+        ${quip(stepsComment(state.entries, state.users, monday, today))}`)}
+      ${card(workoutsPanel(state, monday) + quip(workoutsComment(state.entries, state.users, monday, today)))}
       ${card(`<h3 class="mb-2 font-black">RECENT ACTIVITY</h3><div id="feed"></div>`)}
     </div>`;
 

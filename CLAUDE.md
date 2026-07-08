@@ -18,5 +18,8 @@ Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
   that takes state and returns/updates DOM.
 - All entry dates are local `YYYY-MM-DD` strings. Weeks are Mon–Sun.
 - UI copy says "workout", never "gym".
+- Feed lines and dashboard quips come from `js/lib/banter.js`: deliberately
+  over-the-top, explicit Aussie gym banter (swearing intended — don't sanitise).
+  Deterministic seeded picks so quips rotate daily and stay testable.
 - Team weight chart plots actual kg but keeps exact values obscured: coarse
   10 kg y-axis ticks, tooltips show change vs first weigh-in (never absolute kg).

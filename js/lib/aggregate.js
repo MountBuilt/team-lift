@@ -49,6 +49,16 @@ export function stepsMatrix(entries, users, challenge, todayStr) {
   };
 }
 
+// Explicit y-axis bounds for the team weight chart: 10 kg multiples with at
+// least a decade of padding each side. Chart.js autoscaling collapses when
+// the data span is under a tick step, so the bounds are always set by us.
+export function weightAxisBounds(kgValues) {
+  return {
+    min: Math.floor(Math.min(...kgValues) / 10) * 10 - 10,
+    max: Math.ceil(Math.max(...kgValues) / 10) * 10 + 10
+  };
+}
+
 export function workoutDots(entries, userId, mondayStr) {
   const dots = [false, false, false, false, false, false, false];
   const end = addDays(mondayStr, 6);

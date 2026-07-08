@@ -6,7 +6,7 @@ Firebase Firestore backend (open rules, trusted group), hosted on GitHub Pages.
 Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
 
 ## Commands
-- Unit tests: `node --test tests/`
+- Unit tests: `node --test` (auto-discovers `tests/*.test.js`; Node 26 rejects a bare `tests/` directory argument)
 - Run locally: `python3 -m http.server 8000` then open http://localhost:8000
 - Deploy: push to `main` (GitHub Pages serves repo root)
 - Firestore rules deploy: `firebase deploy --only firestore:rules`

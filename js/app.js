@@ -2,7 +2,7 @@ import { state, restoreSession, logout } from './state.js';
 import { subscribeAll } from './firebase.js';
 import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
-import { mountFab, openLogModal } from './ui/logmodal.js';
+import { mountFab, openLogModal, setFabVisible } from './ui/logmodal.js';
 import { renderDashboard } from './ui/dashboard.js';
 import { renderMe } from './ui/me.js';
 
@@ -17,6 +17,7 @@ function renderLoading() {
 
 function renderMain() {
   mountFab(() => openLogModal());
+  setFabVisible(true);
   const tab = state.tab || 'dash';
   app.innerHTML = `
     <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/95 backdrop-blur">
@@ -42,7 +43,7 @@ function renderMain() {
 }
 
 export function route() {
-  if (!state.passwordOk) return renderGate(app, route);
+  if (!state.passwordOk) { setFabVisible(false); return renderGate(app, route); }
   if (!started) {
     started = true;
     renderLoading();
@@ -58,8 +59,8 @@ export function route() {
     });
     return;
   }
-  if (!state.challenge) return renderLoading();
-  if (!state.currentUser) return renderRoster(app, state.users, route);
+  if (!state.challenge) { setFabVisible(false); return renderLoading(); }
+  if (!state.currentUser) { setFabVisible(false); return renderRoster(app, state.users, route); }
   renderMain();
 }
 

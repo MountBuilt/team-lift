@@ -15,6 +15,12 @@ export function mountFab(onClick) {
   document.body.appendChild(fab);
 }
 
+// The FAB lives on document.body, so it survives app.innerHTML swaps. Hide it
+// on non-main screens (gate/roster/loading) — e.g. after logout.
+export function setFabVisible(visible) {
+  document.getElementById('fab')?.classList.toggle('hidden', !visible);
+}
+
 export function openLogModal(dateStr = todayStr()) {
   document.getElementById('log-modal')?.remove();
   const user = state.currentUser;

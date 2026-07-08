@@ -10,7 +10,7 @@ const db = getFirestore(app);
 const millis = (ts) => (ts && typeof ts.toMillis === 'function') ? ts.toMillis() : 0;
 
 export function subscribeAll(onChange) {
-  const data = { users: [], entries: [], challenge: null };
+  const data = { users: [], entries: [], challenge: null, banter: null };
   const emit = () => onChange({ ...data });
 
   const unsubs = [
@@ -27,6 +27,12 @@ export function subscribeAll(onChange) {
     }),
     onSnapshot(doc(db, 'config', 'challenge'), (snap) => {
       data.challenge = snap.exists() ? snap.data() : null;
+      emit();
+    }),
+    // Daily AI-written banter (written by the local refresh-banter cron job);
+    // the app falls back to js/lib/banter.js templates when absent or stale.
+    onSnapshot(doc(db, 'config', 'banter'), (snap) => {
+      data.banter = snap.exists() ? snap.data() : null;
       emit();
     })
   ];

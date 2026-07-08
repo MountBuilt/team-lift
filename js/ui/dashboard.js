@@ -2,7 +2,7 @@ import {
   teamTiles, workoutDots, weeklyWorkoutCount, streakWeeks
 } from '../lib/aggregate.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
-import { stepsComment, workoutsComment, weightComment } from '../lib/banter.js';
+import { stepsComment, workoutsComment, weightComment, banterFresh } from '../lib/banter.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 
@@ -69,6 +69,7 @@ export function renderDashboard(container, state) {
   const wk = weekNumber(today, c.startDate);
   const total = totalWeeks(c.startDate, c.endDate);
   const inWindow = today >= c.startDate && today <= c.endDate;
+  const ai = banterFresh(state.banter, today) ? state.banter : null;
 
   container.innerHTML = `
     <div class="flex flex-col gap-3 px-4 pb-28 pt-5">
@@ -82,15 +83,16 @@ export function renderDashboard(container, state) {
       ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>
-        ${quip(weightComment(state.entries, state.users, today))}`)}
+        ${quip(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`)}
       ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
         <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet — be the first!</p>
-        ${quip(stepsComment(state.entries, state.users, monday, today))}`)}
-      ${card(workoutsPanel(state, monday) + quip(workoutsComment(state.entries, state.users, monday, today)))}
+        ${quip(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`)}
+      ${card(workoutsPanel(state, monday) +
+        quip(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today)))}
       ${card(`<h3 class="mb-2 font-black">RECENT ACTIVITY</h3><div id="feed"></div>`)}
     </div>`;
 
-  renderFeed(container.querySelector('#feed'), state.entries);
+  renderFeed(container.querySelector('#feed'), state.entries, ai);
   import('../charts.js').then(m => m.drawCharts(state)).catch(() => {});
 }

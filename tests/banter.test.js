@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  pickFrom, feedLine, stepsComment, workoutsComment, weightComment,
+  pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
   STRETCH_ROASTS, TEN_K_LINES
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
@@ -103,6 +103,15 @@ test('weightComment: lone weigher called out, null otherwise', () => {
   assert.ok(c.includes('Sam'));
   const two = [...one, e('u2', '2026-07-08', { weight: 80 })];
   assert.equal(weightComment(two, users, '2026-07-09'), null);
+});
+
+test('banterFresh accepts today/yesterday, rejects stale, future, or missing', () => {
+  assert.equal(banterFresh({ date: '2026-07-10' }, '2026-07-10'), true);
+  assert.equal(banterFresh({ date: '2026-07-09' }, '2026-07-10'), true);
+  assert.equal(banterFresh({ date: '2026-07-08' }, '2026-07-10'), false);
+  assert.equal(banterFresh({ date: '2026-07-11' }, '2026-07-10'), false);
+  assert.equal(banterFresh(null, '2026-07-10'), false);
+  assert.equal(banterFresh({}, '2026-07-10'), false);
 });
 
 test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {

@@ -13,6 +13,13 @@ export function pickFrom(arr, seed) {
   return arr[hashStr(String(seed)) % arr.length];
 }
 
+// AI-written banter from config/banter beats the template pool while it's
+// fresh (written today or yesterday); after that the templates take over so
+// a dead cron job never leaves week-old quips on the board.
+export function banterFresh(banter, todayStr) {
+  return Boolean(banter?.date) && addDays(banter.date, 1) >= todayStr && banter.date <= todayStr;
+}
+
 // ---- Recent activity lines (rendered after the bolded name) ----
 
 export const STRETCH_ROASTS = [

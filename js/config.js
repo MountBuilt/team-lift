@@ -16,7 +16,7 @@ export const PALETTE = [
 ];
 
 export const WORKOUT_PARTS = [
-  'arms', 'shoulders', 'legs', 'chest', 'back', 'core', 'full body', 'stretching'
+  'arms', 'shoulders', 'legs', 'chest', 'back', 'core', 'full body', 'cardio', 'swimming', 'stretching'
 ];
 
 // Real project web app config (public client identifiers, not secrets).

@@ -1,4 +1,4 @@
-import { weightSeries, stepsMatrix } from './lib/aggregate.js';
+import { weightSeries, stepsMatrix, chartWindow } from './lib/aggregate.js';
 import { todayStr, formatShort, dateRange } from './lib/dates.js';
 
 let weightChart = null;
@@ -29,9 +29,8 @@ function drawWeight(state) {
   if (!canvas) return;
   weightChart?.destroy();
 
-  const today = todayStr();
-  const end = today < state.challenge.endDate ? today : state.challenge.endDate;
-  const dates = dateRange(state.challenge.startDate, end);
+  const { start, end } = chartWindow(state.entries, state.challenge, todayStr());
+  const dates = dateRange(start, end);
   const series = weightSeries(state.entries, state.users, state.challenge);
 
   const empty = document.getElementById('weight-empty');
@@ -39,12 +38,16 @@ function drawWeight(state) {
   empty?.classList.toggle('hidden', series.length > 0);
   if (series.length === 0) return;
 
+  // Tooltips show change vs each user's first weigh-in, never absolute kg —
+  // the coarse 10 kg axis ticks keep exact weights unreadable.
+  const firstKg = new Map(series.map(s => [s.name, s.points[0].kg]));
+
   weightChart = new Chart(canvas, {
     type: 'line',
     data: {
       labels: dates,
       datasets: series.map(s => {
-        const byDate = new Map(s.points.map(p => [p.date, p.pct]));
+        const byDate = new Map(s.points.map(p => [p.date, p.kg]));
         return {
           label: s.name,
           data: dates.map(d => byDate.get(d) ?? null),
@@ -66,7 +69,10 @@ function drawWeight(state) {
         tooltip: {
           callbacks: {
             title: (items) => formatShort(dates[items[0].dataIndex]),
-            label: (item) => ` ${item.dataset.label}: ${item.parsed.y > 0 ? '+' : ''}${item.parsed.y}%`
+            label: (item) => {
+              const d = Math.round((item.parsed.y - firstKg.get(item.dataset.label)) * 10) / 10;
+              return ` ${item.dataset.label}: ${d > 0 ? '+' : ''}${d} kg vs start`;
+            }
           }
         }
       },
@@ -79,8 +85,8 @@ function drawWeight(state) {
           }
         },
         y: {
-          grid: { color: GRID },
-          ticks: { color: TICK, callback: (v) => `${v > 0 ? '+' : ''}${v}%` }
+          grace: 5, grid: { color: GRID },
+          ticks: { color: TICK, stepSize: 10, callback: (v) => `${v}` }
         }
       }
     }

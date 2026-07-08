@@ -3,8 +3,20 @@ import { addDays, dateRange, weekdayIndex } from './dates.js';
 
 const hasWorkout = (entry) => Array.isArray(entry.workoutParts) && entry.workoutParts.length > 0;
 
+// Pre-start entries are kept so the app is fully usable before the challenge
+// begins; only the end is capped.
 export function entriesInWindow(entries, challenge) {
-  return entries.filter(e => e.date >= challenge.startDate && e.date <= challenge.endDate);
+  return entries.filter(e => e.date <= challenge.endDate);
+}
+
+// Date span for time-axis charts: from the earliest of challenge start, today,
+// and any logged entry, up to today (capped at challenge end). Start is always
+// <= end, so dateRange over it is never empty.
+export function chartWindow(entries, challenge, todayStr) {
+  const end = todayStr < challenge.endDate ? todayStr : challenge.endDate;
+  let start = challenge.startDate < end ? challenge.startDate : end;
+  for (const e of entries) if (e.date < start) start = e.date;
+  return { start, end };
 }
 
 export function weightSeries(entries, users, challenge) {
@@ -14,22 +26,16 @@ export function weightSeries(entries, users, challenge) {
       .filter(e => e.userId === u.id)
       .sort((a, b) => a.date < b.date ? -1 : 1);
     if (points.length === 0) return null;
-    const baseline = points[0].weight;
-    // A zero/invalid baseline would make every pct Infinity/NaN — omit the user.
-    if (!(baseline > 0)) return null;
     return {
       userId: u.id, name: u.name, color: u.color,
-      points: points.map(p => ({
-        date: p.date,
-        pct: Math.round(((p.weight - baseline) / baseline) * 1000) / 10
-      }))
+      points: points.map(p => ({ date: p.date, kg: p.weight }))
     };
   }).filter(Boolean);
 }
 
 export function stepsMatrix(entries, users, challenge, todayStr) {
-  const end = todayStr < challenge.endDate ? todayStr : challenge.endDate;
-  const dates = dateRange(challenge.startDate, end);
+  const { start, end } = chartWindow(entries, challenge, todayStr);
+  const dates = dateRange(start, end);
   const byKey = new Map(entries.map(e => [`${e.userId}_${e.date}`, e]));
   return {
     dates,

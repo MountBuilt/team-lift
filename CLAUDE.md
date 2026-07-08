@@ -18,4 +18,5 @@ Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
   that takes state and returns/updates DOM.
 - All entry dates are local `YYYY-MM-DD` strings. Weeks are Mon–Sun.
 - UI copy says "workout", never "gym".
-- Team charts show weight as % change from baseline, never actual kg.
+- Team weight chart plots actual kg but keeps exact values obscured: coarse
+  10 kg y-axis ticks, tooltips show change vs first weigh-in (never absolute kg).

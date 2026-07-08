@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  entriesInWindow, weightSeries, stepsMatrix, workoutDots,
+  entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
   weeklyWorkoutCount, streakWeeks, teamTiles, activityFeed
 } from '../js/lib/aggregate.js';
 
@@ -15,42 +15,55 @@ const e = (userId, date, fields = {}) => ({
   weight: null, steps: null, workoutParts: null, updatedAt: 0, ...fields
 });
 
-test('entriesInWindow filters by date string comparison', () => {
+test('entriesInWindow keeps pre-start entries, caps at challenge end', () => {
   const entries = [e('u1', '2026-07-05'), e('u1', '2026-07-06'), e('u1', '2026-08-02'), e('u1', '2026-08-03')];
   assert.deepEqual(entriesInWindow(entries, challenge).map(x => x.date),
-    ['2026-07-06', '2026-08-02']);
+    ['2026-07-05', '2026-07-06', '2026-08-02']);
 });
 
-test('weightSeries computes % change from each user baseline', () => {
+test('chartWindow spans challenge when today is inside it', () => {
+  assert.deepEqual(chartWindow([], challenge, '2026-07-10'),
+    { start: '2026-07-06', end: '2026-07-10' });
+});
+
+test('chartWindow starts early when today or entries precede the challenge', () => {
+  assert.deepEqual(chartWindow([], challenge, '2026-07-02'),
+    { start: '2026-07-02', end: '2026-07-02' });
+  assert.deepEqual(chartWindow([e('u1', '2026-06-30')], challenge, '2026-07-02'),
+    { start: '2026-06-30', end: '2026-07-02' });
+});
+
+test('chartWindow caps end at challenge end', () => {
+  assert.deepEqual(chartWindow([], challenge, '2026-08-10'),
+    { start: '2026-07-06', end: '2026-08-02' });
+});
+
+test('weightSeries returns each user\'s weigh-ins in kg, date-sorted', () => {
   const entries = [
-    e('u1', '2026-07-06', { weight: 100 }),
     e('u1', '2026-07-10', { weight: 98 }),
+    e('u1', '2026-07-06', { weight: 100 }),
     e('u2', '2026-07-08', { weight: 80 }),
-    e('u2', '2026-07-06', { steps: 5000 }) // steps-only: not a baseline
+    e('u2', '2026-07-06', { steps: 5000 }) // steps-only: not a weigh-in
   ];
   const s = weightSeries(entries, users, challenge);
   assert.equal(s.length, 2);
   const sam = s.find(x => x.userId === 'u1');
   assert.deepEqual(sam.points, [
-    { date: '2026-07-06', pct: 0 },
-    { date: '2026-07-10', pct: -2 }
+    { date: '2026-07-06', kg: 100 },
+    { date: '2026-07-10', kg: 98 }
   ]);
   const alex = s.find(x => x.userId === 'u2');
-  assert.deepEqual(alex.points, [{ date: '2026-07-08', pct: 0 }]);
+  assert.deepEqual(alex.points, [{ date: '2026-07-08', kg: 80 }]);
 });
 
-test('weightSeries omits users with no in-window weight', () => {
-  const s = weightSeries([e('u1', '2026-07-06', { weight: 90 })], users, challenge);
+test('weightSeries includes pre-start weigh-ins', () => {
+  const s = weightSeries([e('u1', '2026-07-03', { weight: 90 })], users, challenge);
   assert.equal(s.length, 1);
-  assert.equal(s[0].userId, 'u1');
+  assert.deepEqual(s[0].points, [{ date: '2026-07-03', kg: 90 }]);
 });
 
-test('weightSeries omits a user whose only weight is a zero baseline', () => {
-  const entries = [
-    e('u1', '2026-07-06', { weight: 90 }),
-    e('u2', '2026-07-06', { weight: 0 })
-  ];
-  const s = weightSeries(entries, users, challenge);
+test('weightSeries omits users with no weigh-in', () => {
+  const s = weightSeries([e('u1', '2026-07-06', { weight: 90 })], users, challenge);
   assert.equal(s.length, 1);
   assert.equal(s[0].userId, 'u1');
 });
@@ -61,6 +74,14 @@ test('stepsMatrix aligns values to dates, capped at today', () => {
   assert.deepEqual(m.dates, ['2026-07-06', '2026-07-07', '2026-07-08']);
   const sam = m.series.find(x => x.userId === 'u1');
   assert.deepEqual(sam.values, [8000, null, null]);
+});
+
+test('stepsMatrix shows pre-start days when today is before the challenge', () => {
+  const entries = [e('u2', '2026-07-02', { steps: 10000 })];
+  const m = stepsMatrix(entries, users, challenge, '2026-07-03');
+  assert.deepEqual(m.dates, ['2026-07-02', '2026-07-03']);
+  const alex = m.series.find(x => x.userId === 'u2');
+  assert.deepEqual(alex.values, [10000, null]);
 });
 
 test('workoutDots marks days with non-empty workoutParts', () => {

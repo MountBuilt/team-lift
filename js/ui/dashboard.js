@@ -74,7 +74,7 @@ export function renderDashboard(container, state) {
             (today < c.startDate ? `Starts ${esc(c.startDate)}` : 'Challenge finished')}</p>
       </header>
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
-      ${card(`<h3 class="mb-2 font-black">WEIGHT · % FROM START</h3>
+      ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>`)}
       ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>

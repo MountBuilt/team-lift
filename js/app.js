@@ -2,6 +2,7 @@ import { state, restoreSession } from './state.js';
 import { subscribeAll } from './firebase.js';
 import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
+import { esc } from './lib/esc.js';
 
 const app = document.getElementById('app');
 let unsubscribe = null;
@@ -15,7 +16,7 @@ function renderLoading() {
 // Placeholder — replaced by the dashboard task.
 function renderMain() {
   app.innerHTML = `<div class="p-6"><h1 class="text-2xl font-black">
-    Hi ${state.currentUser.name} — dashboard coming next.</h1></div>`;
+    Hi ${esc(state.currentUser.name)} — dashboard coming next.</h1></div>`;
 }
 
 export function route() {

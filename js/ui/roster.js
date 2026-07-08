@@ -1,10 +1,11 @@
 import { loginAs, signup } from '../state.js';
+import { esc } from '../lib/esc.js';
 
 export function renderRoster(container, users, onLoggedIn) {
   const names = users.map(u => `
     <button data-id="${u.id}" class="roster-name w-full rounded-xl bg-card border border-edge
       px-4 py-4 text-lg font-bold text-left active:border-accent"
-      style="border-left: 4px solid ${u.color}">${u.name}</button>`).join('');
+      style="border-left: 4px solid ${u.color}">${esc(u.name)}</button>`).join('');
 
   container.innerHTML = `
     <div class="flex min-h-screen flex-col justify-center gap-6 px-6 py-10 max-w-sm mx-auto">
@@ -53,10 +54,23 @@ export function renderRoster(container, users, onLoggedIn) {
       warn.textContent = dup ? 'That name is taken — add an initial so we can tell you apart.' : '';
       warn.classList.toggle('hidden', !dup);
     });
+    let submitting = false;
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      await signup(form.querySelector('#su-name').value, form.querySelector('#su-pin').value);
-      onLoggedIn();
+      if (submitting) return;
+      submitting = true;
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      const warn = sub.querySelector('#su-warn');
+      try {
+        await signup(form.querySelector('#su-name').value, form.querySelector('#su-pin').value);
+        onLoggedIn();
+      } catch (err) {
+        submitting = false;
+        btn.disabled = false;
+        warn.textContent = 'Could not create your profile — try again.';
+        warn.classList.remove('hidden');
+      }
     });
   });
 }

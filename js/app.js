@@ -1,9 +1,10 @@
-import { state, restoreSession } from './state.js';
+import { state, restoreSession, logout } from './state.js';
 import { subscribeAll } from './firebase.js';
 import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
 import { mountFab, openLogModal } from './ui/logmodal.js';
 import { renderDashboard } from './ui/dashboard.js';
+import { renderMe } from './ui/me.js';
 
 const app = document.getElementById('app');
 let unsubscribe = null;
@@ -31,7 +32,10 @@ function renderMain() {
   }));
   const view = app.querySelector('#view');
   if (tab === 'me') {
-    view.innerHTML = '<p class="p-6 text-neutral-500">Me view coming soon.</p>'; // replaced in Task 10
+    renderMe(view, state, {
+      onEdit: (date) => openLogModal(date),
+      onLogout: () => { logout(); state.tab = 'dash'; route(); }
+    });
   } else {
     renderDashboard(view, state);
   }

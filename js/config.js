@@ -19,5 +19,12 @@ export const WORKOUT_PARTS = [
   'arms', 'shoulders', 'legs', 'chest', 'back', 'core', 'full body', 'stretching'
 ];
 
-// REPLACED BY INFRA TASK with the real project's web app config.
-export const firebaseConfig = null;
+// Real project web app config (public client identifiers, not secrets).
+export const firebaseConfig = {
+  apiKey: 'AIzaSyAWOzfMn7YjxaqSr2qx6zTLRE0_xs9VpZI',
+  authDomain: 'team-lift-app.firebaseapp.com',
+  projectId: 'team-lift-app',
+  storageBucket: 'team-lift-app.firebasestorage.app',
+  messagingSenderId: '392861872242',
+  appId: '1:392861872242:web:673bb846b9e7cc508d92eb'
+};

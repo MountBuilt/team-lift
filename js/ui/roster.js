@@ -3,7 +3,7 @@ import { esc, safeColor } from '../lib/esc.js';
 
 export function renderRoster(container, users, onLoggedIn) {
   const names = users.map(u => `
-    <button data-id="${u.id}" class="roster-name w-full rounded-xl bg-card border border-edge
+    <button data-id="${esc(u.id)}" class="roster-name w-full rounded-xl bg-card border border-edge
       px-4 py-4 text-lg font-bold text-left active:border-accent"
       style="border-left: 4px solid ${safeColor(u.color)}">${esc(u.name)}</button>`).join('');
 

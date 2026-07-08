@@ -2,6 +2,7 @@ import { state, restoreSession } from './state.js';
 import { subscribeAll } from './firebase.js';
 import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
+import { mountFab, openLogModal } from './ui/logmodal.js';
 import { esc } from './lib/esc.js';
 
 const app = document.getElementById('app');
@@ -17,6 +18,7 @@ function renderLoading() {
 function renderMain() {
   app.innerHTML = `<div class="p-6"><h1 class="text-2xl font-black">
     Hi ${esc(state.currentUser.name)} — dashboard coming next.</h1></div>`;
+  mountFab(() => openLogModal());
 }
 
 export function route() {

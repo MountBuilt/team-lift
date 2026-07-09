@@ -162,7 +162,7 @@ export function renderDashboard(container, state) {
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
       ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>
+        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>
         ${quip(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`)}
       <section id="workouts-card" class="rounded-2xl bg-card border border-edge p-4">
         ${workoutsPanel(state, monday) +
@@ -170,7 +170,7 @@ export function renderDashboard(container, state) {
       </section>
       ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet — be the first!</p>
+        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>
         ${quip(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`)}
       ${card(`<h3 class="mb-2 font-black">RECENT ACTIVITY</h3><div id="feed"></div>`)}
     </div>`;

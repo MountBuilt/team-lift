@@ -51,7 +51,7 @@ export function renderRoster(container, users, onLoggedIn) {
     form.querySelector('#su-name').addEventListener('input', (ev) => {
       const dup = users.some(u => u.name.toLowerCase() === ev.target.value.trim().toLowerCase());
       const warn = sub.querySelector('#su-warn');
-      warn.textContent = dup ? 'That name is taken — add an initial so we can tell you apart.' : '';
+      warn.textContent = dup ? 'That name is taken. Add an initial so we can tell you apart.' : '';
       warn.classList.toggle('hidden', !dup);
     });
     let submitting = false;
@@ -68,7 +68,7 @@ export function renderRoster(container, users, onLoggedIn) {
       } catch (err) {
         submitting = false;
         btn.disabled = false;
-        warn.textContent = 'Could not create your profile — try again.';
+        warn.textContent = 'Could not create your profile. Try again.';
         warn.classList.remove('hidden');
       }
     });

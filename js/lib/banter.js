@@ -44,7 +44,7 @@ const N = {
   harveyNorman: { name: 'Harvey Norman', punchline: 'weeks of no interest and now he wants the top spot', nudge: "Too late mate, interest's due." },
   mastercard: { name: 'Mastercard', punchline: "always taking credit for the spotter's work or the group's average", nudge: 'Do your own lifting next time.' },
   muffler: { name: 'muffler', punchline: 'already exhausted and making noise about it', nudge: 'Rest later, finish the set now.' },
-  noodles: { name: 'noodles', punchline: "thought that finisher would take two minutes — it's been twelve", nudge: 'Get under a barbell properly next time.' },
+  noodles: { name: 'noodles', punchline: "thought that finisher would take two minutes and it's been twelve", nudge: 'Get under a barbell properly next time.' },
   paperStraw: { name: 'paper straw', punchline: 'works hard for a while but never lasts long enough', nudge: "Let's see if we can get a bit more out of him this round." },
   pothole: { name: 'pothole', punchline: 'sits right in the middle of the road slowing the whole group down', nudge: 'Either fill it with effort or get out of the way.' },
   seaweed: { name: 'seaweed', punchline: 'floats around doing fuck all and stinking up the group average', nudge: 'Either start swimming or get washed out.' },
@@ -56,12 +56,12 @@ const N = {
   wicketKeeper: { name: 'wicket-keeper', punchline: 'puts the gloves on for the workout then stands around doing not much', nudge: 'Get stuck in mate.' },
   tenMmSocket: { name: '10 mm socket', punchline: 'never around when you actually need him for the hard sets or the early sessions', nudge: '' },
   twoStroke: { name: '2-stroke', punchline: 'hard to get going and smoking excuses halfway through', nudge: 'Either fire up properly or choke on it.' },
-  rod: { name: 'Rod', punchline: 'retired on duty — shows up, does the bare minimum and collects the leaderboard points', nudge: 'Someone give him a reason to actually work.' },
+  rod: { name: 'Rod', punchline: 'retired on duty. Shows up, does the bare minimum and collects the leaderboard points', nudge: 'Someone give him a reason to actually work.' },
   seagull: { name: 'seagull', punchline: 'flies in, makes a mess of the session, then leaves the rest of us to clean it up', nudge: 'Either do it properly or stay on the beach.' },
   breakTimeBarry: { name: 'Break Time Barry', punchline: 'somehow always on smoko when the rest of us are mid-set', nudge: 'Get off the bench and back in the game.' },
   foremanOfWatching: { name: 'Foreman of Watching', punchline: "stands around supervising everyone else's form without touching a weight", nudge: 'Either get stuck in or shut it.' },
   snipersNightmare: { name: "sniper's nightmare", punchline: 'hard to pin down on consistency and even harder to hit with any real effort', nudge: 'Someone take the shot and get him moving.' },
-  olympicTorch: { name: 'Olympic Torch', punchline: 'never goes out', nudge: 'Absolute machine — keep it lit.', compliment: true } // the one compliment
+  olympicTorch: { name: 'Olympic Torch', punchline: 'never goes out', nudge: 'Absolute machine, keep it lit.', compliment: true } // the one compliment
 };
 
 export const NICKNAMES = {
@@ -152,7 +152,7 @@ export function nicknameLine(nick, framingIdx, subject = null) {
     ? verb.standalone(subject, art, nick.name)
     : verb.continuation(art, nick.name);
   const nudge = nick.nudge ? ` ${nick.nudge}` : '';
-  return `${lead} — ${nick.punchline}.${nudge}`;
+  return `${lead} - ${nick.punchline}.${nudge}`;
 }
 
 // Seeded convenience: pick a nickname from `pool`, gate it on a coin-flip,
@@ -173,9 +173,9 @@ function maybeNicknameLine(seed, pool, person, avoidIdx = -1) {
 const STRETCH_PLAIN = [
   "did a bit of stretching. Adorable. Get in the squat rack and lift some actual fucking weight, princess.",
   "logged 'stretching' as a workout. Mate. That's a warm-up, not a workout. Pick up a barbell.",
-  "had a lovely little stretch. The yoga retreat is that way, sweetheart — the iron is over here.",
+  "had a lovely little stretch. The yoga retreat is that way, sweetheart. The iron is over here.",
   "stretched. Again. Soft as a servo sausage roll. Go move some heavy shit.",
-  "called that a workout? The squat rack's still there, champ — stretching doesn't count.",
+  "called that a workout? The squat rack's still there, champ. Stretching doesn't count.",
   "logged a stretch and nothing else. The bar's still loaded from yesterday, mate.",
   "clocked off after a stretch. Big day planned, or just allergic to the barbell?"
 ];
@@ -293,7 +293,7 @@ export function stepsComment(entries, users, mondayStr, todaySeed) {
     return pickFrom([
       `${n} is absolutely carrying the team here right now. Step it up, boys.`,
       `${n} is out there doing all the walking while the rest of you warm the couch. Pathetic effort, lads.`,
-      `One set of legs moving and they belong to ${n}. The rest of you — shoes on, now.`
+      `One set of legs moving and they belong to ${n}. The rest of you: shoes on, now.`
     ], todaySeed + 'steps1');
   }
   const tenK = week.find(e => e.steps === 10000);
@@ -322,7 +322,7 @@ export function workoutsComment(entries, users, mondayStr, todaySeed) {
   if (stretcher) {
     return pickFrom([
       `${stretcher.name} has only logged stretching. Get in the squat rack and fucking lift some actual weights, you sissy.`,
-      `All ${stretcher.name} has trained is 'stretching'. Bend over for the barbell instead, princess — it's called a deadlift.`,
+      `All ${stretcher.name} has trained is 'stretching'. Bend over for the barbell instead, princess. It's called a deadlift.`,
       `${stretcher.name}: stretching is what you do BEFORE the workout, sunshine. Go lift something heavy.`
     ], todaySeed + 'wk1');
   }
@@ -330,7 +330,7 @@ export function workoutsComment(entries, users, mondayStr, todaySeed) {
   if (slackers.length > 0 && slackers.length < users.length) {
     const names = slackers.map(u => u.name).join(', ');
     const base = pickFrom([
-      `Oi ${names} — the weights aren't gonna lift themselves. Move.`,
+      `Oi ${names}, the weights aren't gonna lift themselves. Move.`,
       `${names}: zero workouts. Zero. The bar misses you, fellas.`
     ], todaySeed + 'wk2');
 

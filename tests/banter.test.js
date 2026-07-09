@@ -243,7 +243,7 @@ test('nicknameLine always composes a punchline, never a bare tag, and varies its
   const seenFramings = new Set();
   for (let idx = 0; idx < 6; idx++) {
     const l = nicknameLine(nick, idx, 'Dave');
-    seenFramings.add(l.split('—')[0].trim());
+    seenFramings.add(l.split(' - ')[0].trim());
   }
   assert.ok(seenFramings.size > 1, 'expected different framing indices to produce different framing verbs');
 });

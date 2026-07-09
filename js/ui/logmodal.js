@@ -60,7 +60,7 @@ export function openLogModal(dateStr = todayStr()) {
         <span class="text-sm font-bold text-neutral-400">Workout</span>
         <div class="flex flex-wrap gap-2">${WORKOUT_PARTS.map(chip).join('')}</div>
       </div>
-      <p id="log-err" class="hidden text-sm text-red-400">Couldn't save — check your connection and try again.</p>
+      <p id="log-err" class="hidden text-sm text-red-400">Couldn't save. Check your connection and try again.</p>
       <button id="log-save" class="rounded-xl bg-accent py-4 text-lg font-black text-black active:bg-accentDim">
         SAVE</button>
     </form>`;

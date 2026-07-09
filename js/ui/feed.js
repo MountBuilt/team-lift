@@ -8,7 +8,7 @@ import { esc } from '../lib/esc.js';
 export function renderFeed(container, entries, ai = null) {
   const groups = groupFeedByDay(entries, todayStr(), 12);
   if (groups.length === 0) {
-    container.innerHTML = `<p class="text-neutral-500 text-sm">No entries yet — be the first!</p>`;
+    container.innerHTML = `<p class="text-neutral-500 text-sm">No entries yet. Be the first!</p>`;
     return;
   }
   container.innerHTML = groups.map(g => `

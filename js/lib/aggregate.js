@@ -1,5 +1,5 @@
 // Pure aggregation over entries/users/challenge. No Firebase, no DOM.
-import { addDays, dateRange, weekdayIndex } from './dates.js';
+import { addDays, dateRange, weekdayIndex, dayLabel } from './dates.js';
 
 const hasWorkout = (entry) => Array.isArray(entry.workoutParts) && entry.workoutParts.length > 0;
 
@@ -59,15 +59,23 @@ export function weightAxisBounds(kgValues) {
   };
 }
 
-export function workoutDots(entries, userId, mondayStr) {
-  const dots = [false, false, false, false, false, false, false];
-  const end = addDays(mondayStr, 6);
+// Mon..Sun for one user: { date, parts } per day, merging parts (dedup,
+// order-preserved) if more than one entry somehow lands on the same day.
+export function workoutWeek(entries, userId, mondayStr) {
+  const days = dateRange(mondayStr, addDays(mondayStr, 6)).map(date => ({ date, parts: [] }));
   for (const e of entries) {
-    if (e.userId === userId && e.date >= mondayStr && e.date <= end && hasWorkout(e)) {
-      dots[weekdayIndex(e.date)] = true;
+    if (e.userId !== userId || e.date < mondayStr || e.date > addDays(mondayStr, 6)) continue;
+    if (!Array.isArray(e.workoutParts)) continue;
+    const day = days[weekdayIndex(e.date)];
+    for (const part of e.workoutParts) {
+      if (!day.parts.includes(part)) day.parts.push(part);
     }
   }
-  return dots;
+  return days;
+}
+
+export function workoutDots(entries, userId, mondayStr) {
+  return workoutWeek(entries, userId, mondayStr).map(d => d.parts.length > 0);
 }
 
 export function weeklyWorkoutCount(entries, userId, mondayStr) {
@@ -95,6 +103,23 @@ export function teamTiles(entries, users, mondayStr) {
   return { totalWorkouts, membersAt3, totalMembers: users.length, totalSteps };
 }
 
-export function activityFeed(entries, limit = 12) {
-  return [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
+// Newest `limit` entries by (date DESC, updatedAt DESC), grouped into day
+// buckets in that same order. Sorting by date first (not just updatedAt)
+// means a backdated entry rises to the top of ITS OWN day, not the whole feed.
+export function groupFeedByDay(entries, todayStr, limit = 12) {
+  const items = [...entries]
+    .sort((a, b) => b.date === a.date ? b.updatedAt - a.updatedAt : (b.date < a.date ? -1 : 1))
+    .slice(0, limit);
+  const groups = [];
+  const byDate = new Map();
+  for (const item of items) {
+    let group = byDate.get(item.date);
+    if (!group) {
+      group = { date: item.date, label: dayLabel(item.date, todayStr), items: [] };
+      byDate.set(item.date, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  return groups;
 }

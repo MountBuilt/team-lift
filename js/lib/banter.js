@@ -20,19 +20,56 @@ export function banterFresh(banter, todayStr) {
   return Boolean(banter?.date) && addDays(banter.date, 1) >= todayStr && banter.date <= todayStr;
 }
 
+// ---- Tradie nicknames, assigned strictly by behaviour (never randomly) ----
+// Which CANDIDATE from a pool gets used can rotate day to day (via
+// pickFrom), but which POOL applies is always determined by what the data
+// actually shows — a bloke on a streak must never wear a roast nickname.
+export const NICKNAMES = {
+  zeroWorkouts: [
+    { name: 'Sensor Light', line: 'only works when someone walks past' },
+    { name: 'Egon', line: "where's he gone again?" },
+    { name: 'G-Spot', line: 'can never be found' }
+  ],
+  stretchOnly: [
+    { name: 'Noodles', line: 'thinks every job takes two minutes' },
+    { name: 'Paper Straw', line: 'works, but not for long' },
+    { name: 'Deck Chair', line: 'folds under pressure' }
+  ],
+  tenK: [
+    { name: 'Show Bag', line: 'full of shit' },
+    { name: 'Mastercard', line: "takes credit for someone else's work" }
+  ],
+  neverWeighed: [
+    { name: '10mm Socket', line: 'never there when you need him' },
+    { name: 'Golf Ball', line: 'hard to find' }
+  ],
+  trailingLogging: [
+    { name: 'Perth', line: 'three hours behind everyone else' },
+    { name: 'Harvey Norman', line: 'three years, no interest' }
+  ],
+  neverMisses: [
+    { name: 'Olympic Torch', line: 'never goes out' } // the one compliment
+  ]
+};
+
 // ---- Recent activity lines (rendered after the bolded name) ----
 
 export const STRETCH_ROASTS = [
   "did a bit of stretching. Adorable. Get in the squat rack and lift some actual fucking weight, princess.",
   "logged 'stretching' as a workout. Mate. That's a warm-up, not a workout. Pick up a barbell.",
   "had a lovely little stretch. The yoga retreat is that way, sweetheart — the iron is over here.",
-  "stretched. Again. Soft as a servo sausage roll. Go move some heavy shit."
+  "stretched. Again. Soft as a servo sausage roll. Go move some heavy shit.",
+  "called that a workout? Absolute Noodles — thinks every job takes two minutes. Get under a barbell.",
+  "stretched and clocked off. Paper Straw energy — works, but not for long. Try lifting something.",
+  "stretched. Textbook Deck Chair — folds under pressure the second a barbell shows up."
 ];
 
 export const TEN_K_LINES = [
   "claims EXACTLY 10,000 steps. Yeah righto mate, suspiciously round number that one.",
   "logged 10,000 steps on the dot. Sure champ, and I'm the bloody Prime Minister.",
-  "hit exactly 10k steps. Not 9,987. Not 10,113. Exactly 10,000. Righto."
+  "hit exactly 10k steps. Not 9,987. Not 10,113. Exactly 10,000. Righto.",
+  "reckons exactly 10,000 steps. Absolute Show Bag — full of shit, mate.",
+  "logged a perfect 10k. Real Mastercard move, taking credit for someone else's steps."
 ];
 
 const WORKOUT_LINES = [
@@ -151,10 +188,23 @@ export function workoutsComment(entries, users, mondayStr, todaySeed) {
   const slackers = users.filter(u => !partsByUser.has(u.id));
   if (slackers.length > 0 && slackers.length < users.length) {
     const names = slackers.map(u => u.name).join(', ');
-    return pickFrom([
+    const base = pickFrom([
       `Oi ${names} — the weights aren't gonna lift themselves. Move.`,
       `${names}: zero workouts. Zero. The bar misses you, fellas.`
     ], todaySeed + 'wk2');
+    // Nickname assigned by behaviour: this bloke logged zero workouts this
+    // week, full stop — never picked from any other pool.
+    const tagged = slackers[0];
+    const nick = pickFrom(NICKNAMES.zeroWorkouts, todaySeed + 'wk2n' + tagged.id);
+    // Contrast the roast with the one compliment: whoever trained the most
+    // days this week gets called the Olympic Torch.
+    const daysByUser = new Map();
+    for (const e of week) daysByUser.set(e.userId, (daysByUser.get(e.userId) ?? 0) + 1);
+    const [torchId] = [...daysByUser.entries()].sort((a, b) => b[1] - a[1])[0];
+    const torch = users.find(u => u.id === torchId);
+    const torchNick = NICKNAMES.neverMisses[0];
+    return `${base} ${tagged.name}'s a proper ${nick.name} this week — ${nick.line}. ` +
+      `Meanwhile ${torch.name}'s the ${torchNick.name} of the group: ${torchNick.line}.`;
   }
   return pickFrom([
     `Every bloke on the board. Bloody beautiful.`,
@@ -163,11 +213,40 @@ export function workoutsComment(entries, users, mondayStr, todaySeed) {
 }
 
 export function weightComment(entries, users, todaySeed) {
+  if (users.length < 2) return null;
   const weighers = new Set(entries.filter(e => typeof e.weight === 'number').map(e => e.userId));
-  if (weighers.size !== 1 || users.length < 2) return null;
-  const n = users.find(u => u.id === [...weighers][0])?.name ?? 'One bloke';
-  return pickFrom([
-    `${n} is the only one game enough to face the scales. The rest of you scared of a number?`,
-    `Only ${n} has weighed in. Scales don't bite, ladies.`
-  ], todaySeed + 'kg1');
+  const nonWeighers = users.filter(u => !weighers.has(u.id));
+
+  if (weighers.size === 0) {
+    // Nobody has weighed in at all — everyone qualifies for a "never
+    // weighed in" nickname; rotate who gets showcased day to day.
+    const target = pickFrom(users, todaySeed + 'kg0');
+    const nick = pickFrom(NICKNAMES.neverWeighed, todaySeed + 'kg0n' + target.id);
+    return pickFrom([
+      `Not one of you has faced the scales yet. ${target.name} especially — proper ${nick.name}, ${nick.line}. Get on the bloody scales.`,
+      `Zero weigh-ins on the board. ${target.name}'s already earned ${nick.name} status — ${nick.line}. Someone front up.`
+    ], todaySeed + 'kg0');
+  }
+
+  if (weighers.size === 1) {
+    const n = users.find(u => u.id === [...weighers][0])?.name ?? 'One bloke';
+    return pickFrom([
+      `${n} is the only one game enough to face the scales. The rest of you scared of a number?`,
+      `Only ${n} has weighed in. Scales don't bite, ladies.`
+    ], todaySeed + 'kg1');
+  }
+
+  if (nonWeighers.length > 0) {
+    // Most of the team has weighed in but a few are trailing — that's a
+    // "behind on logging" nickname, not a "never weighed in" one.
+    const laggard = pickFrom(nonWeighers, todaySeed + 'kg2');
+    const nick = pickFrom(NICKNAMES.trailingLogging, todaySeed + 'kg2n' + laggard.id);
+    const names = nonWeighers.map(u => u.name).join(', ');
+    return pickFrom([
+      `Everyone's fronted the scales except ${names}. ${laggard.name}'s running on ${nick.name} time — ${nick.line}. Catch up.`,
+      `${names} still haven't weighed in. ${laggard.name}'s giving full ${nick.name} energy — ${nick.line}.`
+    ], todaySeed + 'kg2');
+  }
+
+  return null; // everyone's weighed in — nothing to roast here
 }

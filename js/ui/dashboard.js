@@ -1,5 +1,5 @@
 import {
-  teamTiles, workoutDots, weeklyWorkoutCount, streakWeeks
+  teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks
 } from '../lib/aggregate.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
 import { stepsComment, workoutsComment, weightComment, banterFresh } from '../lib/banter.js';
@@ -26,17 +26,23 @@ function tilesHtml(t) {
   </div>`;
 }
 
-function dotsRow(dots, count) {
+function dotsRow(days, count) {
   const hit = count >= 3;
-  const dot = (on) => `<span class="inline-block h-3.5 w-3.5 rounded-full
-    ${on ? (hit ? 'bg-green-400' : 'bg-accent') : 'bg-edge'}"></span>`;
-  return `<span class="flex gap-1.5">${dots.map(dot).join('')}</span>`;
+  const dot = (day) => {
+    if (day.parts.length === 0) {
+      return `<span class="inline-block h-3.5 w-3.5 rounded-full bg-edge"></span>`;
+    }
+    const label = esc(day.parts.join(' + '));
+    return `<span class="inline-block h-3.5 w-3.5 rounded-full cursor-pointer
+      ${hit ? 'bg-green-400' : 'bg-accent'}" data-parts="${label}" aria-label="${label}"></span>`;
+  };
+  return `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
 }
 
 function workoutsPanel(state, monday) {
   const lastMonday = addDays(monday, -7);
   const rows = state.users.map(u => {
-    const dots = workoutDots(state.entries, u.id, monday);
+    const days = workoutWeek(state.entries, u.id, monday);
     const count = weeklyWorkoutCount(state.entries, u.id, monday);
     const lastCount = weeklyWorkoutCount(state.entries, u.id, lastMonday);
     const streak = streakWeeks(state.entries, u.id, monday);
@@ -44,7 +50,7 @@ function workoutsPanel(state, monday) {
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
           ${streak >= 2 ? '<span title="' + streak + '-week streak">🔥</span>' : ''}</span>
-        ${dotsRow(dots, count)}
+        ${dotsRow(days, count)}
         <span class="w-16 text-right text-sm ${count >= 3 ? 'font-black text-green-400' : 'text-neutral-400'}">
           ${count}/7 <span class="text-neutral-600 text-xs">(${lastCount})</span></span>
       </div>`;
@@ -59,7 +65,81 @@ function workoutsPanel(state, monday) {
       <h3 class="font-black">WORKOUTS THIS WEEK</h3>
       <span class="text-xs text-neutral-500">last wk in ( )</span>
     </div>
-    ${rows || '<p class="text-neutral-500 text-sm">No members yet.</p>'}`;
+    ${rows || '<p class="text-neutral-500 text-sm">No members yet.</p>'}
+    <div id="workout-tooltip" role="tooltip"
+      class="hidden fixed z-50 pointer-events-none max-w-[16rem] rounded-lg border border-edge
+        bg-ink px-2 py-1 text-xs text-neutral-100 shadow-lg"></div>`;
+}
+
+// Single delegated pointer/tap tooltip for the workout dots. Capture-phase
+// listeners let one handler on the card catch pointerenter/pointerleave,
+// which don't bubble, for every dot inside it.
+function initWorkoutTooltip(cardEl) {
+  const tip = cardEl.querySelector('#workout-tooltip');
+  if (!tip) return;
+
+  const hide = () => {
+    tip.classList.add('hidden');
+    if (activeWorkoutTip === tip) activeWorkoutTip = null;
+  };
+
+  const show = (dot) => {
+    const parts = dot.dataset.parts;
+    if (!parts) return;
+    tip.textContent = parts;
+    tip.classList.remove('hidden');
+    activeWorkoutTip = tip;
+    const dotRect = dot.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    let left = dotRect.left + dotRect.width / 2 - tipRect.width / 2;
+    left = Math.max(4, Math.min(left, window.innerWidth - tipRect.width - 4));
+    let top = dotRect.top - tipRect.height - 8;
+    if (top < 4) top = dotRect.bottom + 8;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  };
+
+  // cardEl is torn down and replaced on every re-render (app.js re-renders the
+  // whole view on each Firestore snapshot), so listeners on it are naturally
+  // garbage-collected with it. document/window listeners are not, so those
+  // are bound exactly once at module scope (below) and call the module-level
+  // hideActiveWorkoutTooltip, which always targets whichever tooltip is open.
+  cardEl.addEventListener('pointerenter', (ev) => {
+    if (ev.pointerType !== 'mouse') return;
+    const dot = ev.target.closest?.('[data-parts]');
+    if (dot) show(dot);
+  }, true);
+
+  cardEl.addEventListener('pointerleave', (ev) => {
+    if (ev.pointerType !== 'mouse') return;
+    if (ev.target.closest?.('[data-parts]')) hide();
+  }, true);
+
+  cardEl.addEventListener('click', (ev) => {
+    const dot = ev.target.closest?.('[data-parts]');
+    if (!dot) return;
+    ev.stopPropagation();
+    show(dot);
+  });
+
+  bindGlobalWorkoutTooltipDismissal();
+}
+
+let activeWorkoutTip = null;
+let globalWorkoutTooltipDismissalBound = false;
+
+function hideActiveWorkoutTooltip() {
+  if (activeWorkoutTip) {
+    activeWorkoutTip.classList.add('hidden');
+    activeWorkoutTip = null;
+  }
+}
+
+function bindGlobalWorkoutTooltipDismissal() {
+  if (globalWorkoutTooltipDismissalBound) return;
+  globalWorkoutTooltipDismissalBound = true;
+  document.addEventListener('click', hideActiveWorkoutTooltip);
+  window.addEventListener('scroll', hideActiveWorkoutTooltip, true);
 }
 
 export function renderDashboard(container, state) {
@@ -84,15 +164,18 @@ export function renderDashboard(container, state) {
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet — be the first!</p>
         ${quip(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`)}
+      <section id="workouts-card" class="rounded-2xl bg-card border border-edge p-4">
+        ${workoutsPanel(state, monday) +
+          quip(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today))}
+      </section>
       ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
         <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet — be the first!</p>
         ${quip(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`)}
-      ${card(workoutsPanel(state, monday) +
-        quip(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today)))}
       ${card(`<h3 class="mb-2 font-black">RECENT ACTIVITY</h3><div id="feed"></div>`)}
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, ai);
+  initWorkoutTooltip(container.querySelector('#workouts-card'));
   import('../charts.js').then(m => m.drawCharts(state)).catch(() => {});
 }

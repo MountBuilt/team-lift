@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   todayStr, addDays, mondayOf, dateRange, weekdayIndex,
-  weekNumber, totalWeeks, formatShort
+  weekNumber, totalWeeks, formatShort, dayLabel
 } from '../js/lib/dates.js';
 
 test('todayStr formats a known Date as local YYYY-MM-DD', () => {
@@ -44,4 +44,22 @@ test('totalWeeks counts Mon–Sun weeks the window touches', () => {
 
 test('formatShort renders weekday, day, month', () => {
   assert.equal(formatShort('2026-07-07'), 'Tue 7 Jul');
+});
+
+test('dayLabel: today', () => {
+  assert.equal(dayLabel('2026-07-08', '2026-07-08'), 'Today');
+});
+
+test('dayLabel: yesterday', () => {
+  assert.equal(dayLabel('2026-07-07', '2026-07-08'), 'Yesterday');
+});
+
+test('dayLabel: full weekday name for 2..6 days ago', () => {
+  assert.equal(dayLabel('2026-07-06', '2026-07-08'), 'Monday'); // 2 days ago
+  assert.equal(dayLabel('2026-07-02', '2026-07-08'), 'Thursday'); // 6 days ago
+});
+
+test('dayLabel: formatShort for 7+ days ago and for future dates', () => {
+  assert.equal(dayLabel('2026-07-01', '2026-07-08'), formatShort('2026-07-01')); // 7 days ago
+  assert.equal(dayLabel('2026-07-10', '2026-07-08'), formatShort('2026-07-10')); // future
 });

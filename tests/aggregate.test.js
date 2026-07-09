@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
-  weeklyWorkoutCount, streakWeeks, teamTiles, activityFeed
+  workoutWeek, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay
 } from '../js/lib/aggregate.js';
 
 const challenge = { title: 'Test', startDate: '2026-07-06', endDate: '2026-08-02' };
@@ -115,7 +115,69 @@ test('teamTiles sums the week across members', () => {
     { totalWorkouts: 3, membersAt3: 1, totalMembers: 2, totalSteps: 20000 });
 });
 
-test('activityFeed sorts by updatedAt desc and truncates', () => {
-  const entries = [e('u1', '2026-07-06', { updatedAt: 1 }), e('u2', '2026-07-07', { updatedAt: 3 }), e('u1', '2026-07-08', { updatedAt: 2 })];
-  assert.deepEqual(activityFeed(entries, 2).map(x => x.updatedAt), [3, 2]);
+test('workoutWeek returns 7 Mon..Sun days with parts, [] when none', () => {
+  const entries = [
+    e('u1', '2026-07-06', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-08', { workoutParts: [] }),
+    e('u1', '2026-07-09', { workoutParts: ['core', 'arms'] })
+  ];
+  const week = workoutWeek(entries, 'u1', '2026-07-06');
+  assert.equal(week.length, 7);
+  assert.deepEqual(week.map(d => d.date),
+    ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11', '2026-07-12']);
+  assert.deepEqual(week.map(d => d.parts),
+    [['legs'], [], [], ['core', 'arms'], [], [], []]);
+});
+
+test('workoutWeek merges parts from multiple entries on the same day, deduped and ordered', () => {
+  const entries = [
+    e('u1', '2026-07-07', { workoutParts: ['legs', 'core'] }),
+    e('u1', '2026-07-07', { workoutParts: ['core', 'arms'] })
+  ];
+  const week = workoutWeek(entries, 'u1', '2026-07-06');
+  assert.deepEqual(week[1].parts, ['legs', 'core', 'arms']);
+});
+
+test('workoutWeek ignores other users and out-of-range dates', () => {
+  const entries = [
+    e('u2', '2026-07-06', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-05', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-13', { workoutParts: ['legs'] })
+  ];
+  const week = workoutWeek(entries, 'u1', '2026-07-06');
+  assert.ok(week.every(d => d.parts.length === 0));
+});
+
+test('groupFeedByDay sorts by date desc, then updatedAt desc within a day', () => {
+  const entries = [
+    e('u1', '2026-07-06', { updatedAt: 1 }),
+    e('u2', '2026-07-07', { updatedAt: 3 }),
+    e('u1', '2026-07-07', { updatedAt: 5 })
+  ];
+  const groups = groupFeedByDay(entries, '2026-07-07', 12);
+  assert.deepEqual(groups.map(g => g.date), ['2026-07-07', '2026-07-06']);
+  assert.deepEqual(groups[0].items.map(x => x.updatedAt), [5, 3]);
+});
+
+test('groupFeedByDay: a backdated entry with a very recent updatedAt stays under its own day', () => {
+  // Backdated entry (date in the past) edited just now (huge updatedAt) must
+  // not jump above today's entries — this is the bug the rewrite fixes.
+  const entries = [
+    e('u1', '2026-07-05', { updatedAt: 999999 }), // backdated, edited moments ago
+    e('u2', '2026-07-07', { updatedAt: 10 }),
+    e('u1', '2026-07-06', { updatedAt: 5 })
+  ];
+  const groups = groupFeedByDay(entries, '2026-07-07', 12);
+  assert.deepEqual(groups.map(g => g.date), ['2026-07-07', '2026-07-06', '2026-07-05']);
+});
+
+test('groupFeedByDay truncates to limit before grouping, and labels each group', () => {
+  const entries = [
+    e('u1', '2026-07-07', { updatedAt: 3 }),
+    e('u1', '2026-07-06', { updatedAt: 2 }),
+    e('u1', '2026-07-05', { updatedAt: 1 })
+  ];
+  const groups = groupFeedByDay(entries, '2026-07-07', 2);
+  assert.deepEqual(groups.map(g => g.date), ['2026-07-07', '2026-07-06']);
+  assert.deepEqual(groups.map(g => g.label), ['Today', 'Yesterday']);
 });

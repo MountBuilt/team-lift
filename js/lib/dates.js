@@ -50,3 +50,16 @@ export function formatShort(dateStr) {
   const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()];
   return `${wd} ${dt.getDate()} ${mo}`;
 }
+
+// Human day label relative to today: Today, Yesterday, full weekday name for
+// 2..6 days ago, else the short formatted date (also covers future dates).
+export function dayLabel(dateStr, todayStr) {
+  if (dateStr === todayStr) return 'Today';
+  const diffDays = Math.round((parseLocal(todayStr) - parseLocal(dateStr)) / 86400000);
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays >= 2 && diffDays <= 6) {
+    const names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return names[weekdayIndex(dateStr)];
+  }
+  return formatShort(dateStr);
+}

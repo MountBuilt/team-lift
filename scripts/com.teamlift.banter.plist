@@ -9,14 +9,30 @@
     <string>/bin/bash</string>
     <string>/Users/simongilmore/Documents/Projects/team-lift/scripts/refresh-banter.sh</string>
   </array>
-  <!-- Daily at 6:47am; launchd runs a missed slot on wake from sleep. -->
+  <!-- Six-hourly at :47 past; launchd runs a missed slot on wake from sleep.
+       The script itself hashes each dashboard section and only calls out to
+       claude when something actually changed since the last run. -->
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key><integer>6</integer>
-    <key>Minute</key><integer>47</integer>
-  </dict>
-  <!-- Also fire at login, covering days the Mac was powered off at 6:47.
-       The script exits early if today's banter already exists. -->
+  <array>
+    <dict>
+      <key>Hour</key><integer>0</integer>
+      <key>Minute</key><integer>47</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>6</integer>
+      <key>Minute</key><integer>47</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>12</integer>
+      <key>Minute</key><integer>47</integer>
+    </dict>
+    <dict>
+      <key>Hour</key><integer>18</integer>
+      <key>Minute</key><integer>47</integer>
+    </dict>
+  </array>
+  <!-- Also fire at login, covering slots the Mac was powered off for.
+       The script's own hash-based change detection keeps this cheap. -->
   <key>RunAtLoad</key>
   <true/>
 </dict>

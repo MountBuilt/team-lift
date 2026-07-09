@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
-  STRETCH_ROASTS, TEN_K_LINES
+  STRETCH_ROASTS, TEN_K_LINES, NICKNAMES
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
 
@@ -97,12 +97,64 @@ test('workoutsComment: null when nobody has trained', () => {
   assert.equal(workoutsComment([], users, '2026-07-06', '2026-07-09'), null);
 });
 
-test('weightComment: lone weigher called out, null otherwise', () => {
+test('workoutsComment: zero-workout slacker gets a tradie nickname, top trainer gets the Olympic Torch compliment', () => {
+  const entries = [e('u1', '2026-07-07', { workoutParts: ['legs'] })];
+  const c = workoutsComment(entries, users, '2026-07-06', '2026-07-09');
+  assert.ok(NICKNAMES.zeroWorkouts.some(n => c.includes(n.name)));
+  assert.ok(c.includes(NICKNAMES.neverMisses[0].name));
+  assert.ok(c.includes('Sam')); // Sam is the only one who trained this week
+});
+
+test('weightComment: lone weigher praised, laggards behind-schedule, whole team weighed-in is quiet', () => {
   const one = [e('u1', '2026-07-08', { weight: 90 })];
-  const c = weightComment(one, users, '2026-07-09');
-  assert.ok(c.includes('Sam'));
+  const c1 = weightComment(one, users, '2026-07-09');
+  assert.ok(c1.includes('Sam'));
+
   const two = [...one, e('u2', '2026-07-08', { weight: 80 })];
-  assert.equal(weightComment(two, users, '2026-07-09'), null);
+  const c2 = weightComment(two, users, '2026-07-09');
+  assert.ok(c2.includes('Bruce'));
+  assert.ok(NICKNAMES.trailingLogging.some(n => c2.includes(n.name)));
+
+  const three = [...two, e('u3', '2026-07-08', { weight: 70 })];
+  assert.equal(weightComment(three, users, '2026-07-09'), null);
+});
+
+test('weightComment: nobody weighed in gets a "never weighed in" nickname roast', () => {
+  const c = weightComment([], users, '2026-07-09');
+  assert.ok(NICKNAMES.neverWeighed.some(n => c.includes(n.name)));
+});
+
+test('STRETCH_ROASTS and TEN_K_LINES include nickname-flavoured lines, reachable via feedLine', () => {
+  assert.ok(STRETCH_ROASTS.some(line => NICKNAMES.stretchOnly.some(n => line.includes(n.name))));
+  assert.ok(TEN_K_LINES.some(line => NICKNAMES.tenK.some(n => line.includes(n.name))));
+
+  let stretchHit = false;
+  let tenKHit = false;
+  for (let i = 0; i < 50 && !(stretchHit && tenKHit); i++) {
+    const stretchLine = feedLine(e('u1', '2026-07-08', { workoutParts: ['stretching'], updatedAt: i }));
+    if (NICKNAMES.stretchOnly.some(n => stretchLine.includes(n.name))) stretchHit = true;
+    const tenKLine = feedLine(e('u2', '2026-07-08', { steps: 10000, updatedAt: i }));
+    if (NICKNAMES.tenK.some(n => tenKLine.includes(n.name))) tenKHit = true;
+  }
+  assert.ok(stretchHit, 'expected a stretch-only nickname line to be reachable');
+  assert.ok(tenKHit, 'expected a 10k nickname line to be reachable');
+});
+
+test('nickname-flavoured picks stay deterministic for the same inputs', () => {
+  const workoutEntries = [e('u1', '2026-07-07', { workoutParts: ['legs'] })];
+  assert.equal(
+    workoutsComment(workoutEntries, users, '2026-07-06', '2026-07-09'),
+    workoutsComment(workoutEntries, users, '2026-07-06', '2026-07-09')
+  );
+  assert.equal(
+    weightComment([], users, '2026-07-09'),
+    weightComment([], users, '2026-07-09')
+  );
+  const trailing = [e('u1', '2026-07-08', { weight: 90 }), e('u2', '2026-07-08', { weight: 80 })];
+  assert.equal(
+    weightComment(trailing, users, '2026-07-09'),
+    weightComment(trailing, users, '2026-07-09')
+  );
 });
 
 test('banterFresh accepts today/yesterday, rejects stale, future, or missing', () => {

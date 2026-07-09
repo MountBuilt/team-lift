@@ -114,16 +114,20 @@ curl -s "$BASE/config/banter?key=$KEY"   # current doc — read before you write
    > field, URL-encoded, naming only what's actually in the body.
 
    Example: only `weight` and `feed` changed, and within `feed` only
-   `u2_2026-07-08` is new/changed. Build the URL with the mask paths joined
-   by `&` directly (they're plain alphanumerics/dots/underscores/hyphens —
-   no percent-encoding actually needed for entry doc ids or field names like
-   these, but keep the habit for any path that might contain other
-   characters):
+   `u2_2026-07-08` is new/changed.
+
+   > **Entry doc ids contain hyphens, so they must be backtick-quoted inside
+   > a field path.** Firestore only accepts a bare path segment matching
+   > `[A-Za-z_][A-Za-z_0-9]*`; `feed.u2_2026-07-08` is rejected as an invalid
+   > field path. Write `` feed.`u2_2026-07-08` `` instead. `cards.*`, `date`,
+   > `hashes.*` and `history` need no quoting. Percent-encode the backticks
+   > (`%60`) — curl will not do it for you.
 
    ```bash
+   Q='%60'   # backtick, percent-encoded for the query string
    MASK="updateMask.fieldPaths=cards.weight"
-   MASK="$MASK&updateMask.fieldPaths=feed.u2_2026-07-08"
-   MASK="$MASK&updateMask.fieldPaths=feedMeta.u2_2026-07-08"
+   MASK="$MASK&updateMask.fieldPaths=feed.${Q}u2_2026-07-08${Q}"
+   MASK="$MASK&updateMask.fieldPaths=feedMeta.${Q}u2_2026-07-08${Q}"
    MASK="$MASK&updateMask.fieldPaths=history"
 
    curl -s -X PATCH "$BASE/config/banter?key=$KEY&$MASK" \

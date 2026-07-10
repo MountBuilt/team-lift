@@ -17,6 +17,7 @@ export function renderMe(container, state, { onEdit, onLogout }) {
     if (typeof e.weight === 'number') bits.push(`${e.weight} kg`);
     if (typeof e.steps === 'number') bits.push(`${e.steps.toLocaleString()} steps`);
     if (e.workoutParts?.length) bits.push(esc(e.workoutParts.join(' + ')));
+    if (e.dailyChallenge === true) bits.push('challenge ✔');
     return `
       <button data-date="${esc(e.date)}" class="entry-row flex w-full items-baseline justify-between gap-3
         border-b border-edge/60 py-3 text-left last:border-0 active:bg-ink">

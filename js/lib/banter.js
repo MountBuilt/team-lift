@@ -243,6 +243,30 @@ const STEP_SUFFIXES = [
 
 const WEIGH_SUFFIX = "Faced the scales while he was at it. Full send.";
 
+// Daily challenge feed lines. Solo lines carry the whole sentence; suffixes
+// tack onto a day that already logged something else.
+const CHALLENGE_SOLO_LINES = [
+  "knocked over the daily challenge. Tick. Easiest win of the day, boys.",
+  "got the daily challenge done. No excuses, just reps.",
+  "smashed the daily challenge before half of you even opened the app. Standard set.",
+  "banked the daily challenge. Loungeroom floor counts, champ. Reps are reps."
+];
+
+const CHALLENGE_SUFFIXES = [
+  "Daily challenge ticked too. Greedy bugger.",
+  "And the daily challenge on top. Full marks today.",
+  "Daily challenge done as well. No notes."
+];
+
+// Rotating one-liner under the dashboard challenge card, seeded by date.
+export const CHALLENGE_QUIPS = [
+  "In the workout or on the loungeroom floor. Reps are reps.",
+  "Takes two minutes, champ. Your excuses take longer.",
+  "No barbell needed. No excuses accepted.",
+  "Knock it over before smoko or cop it in the feed.",
+  "Do it now, brag about it all day. That's the deal."
+];
+
 const hasWorkout = (e) => Array.isArray(e.workoutParts) && e.workoutParts.length > 0;
 const stretchOnly = (parts) => parts.length > 0 && parts.every(p => p === 'stretching');
 const fmtSteps = (n) => n.toLocaleString('en-AU');
@@ -270,6 +294,11 @@ export function feedLine(entry) {
   }
   if (typeof entry.weight === 'number') {
     pieces.push(pieces.length === 0 ? pickFrom(WEIGH_LINES, seed + 'k') : WEIGH_SUFFIX);
+  }
+  if (entry.dailyChallenge === true) {
+    pieces.push(pieces.length === 0
+      ? pickFrom(CHALLENGE_SOLO_LINES, seed + 'c')
+      : pickFrom(CHALLENGE_SUFFIXES, seed + 'c'));
   }
   return pieces.join(' ') || 'logged... something. Commit to it next time, champ.';
 }

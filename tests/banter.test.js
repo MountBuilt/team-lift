@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
-  nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES
+  nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
 
@@ -279,4 +279,25 @@ test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {
   assert.deepEqual(weightAxisBounds([92]), { min: 80, max: 110 });
   assert.deepEqual(weightAxisBounds([70, 120]), { min: 60, max: 130 });
   assert.deepEqual(weightAxisBounds([90]), { min: 80, max: 100 });
+});
+
+test('feedLine covers a challenge-only entry (never the "logged... something" fallback)', () => {
+  const entry = e('u1', '2026-07-10', { dailyChallenge: true, updatedAt: 5 });
+  const line = feedLine(entry);
+  assert.ok(line.toLowerCase().includes('daily challenge'), line);
+  assert.ok(!line.includes('logged... something'));
+  assert.equal(feedLine(entry), line); // deterministic
+});
+
+test('feedLine appends a challenge suffix when the tick rides along with other logging', () => {
+  const entry = e('u1', '2026-07-10', { workoutParts: ['legs'], dailyChallenge: true, updatedAt: 5 });
+  const line = feedLine(entry);
+  assert.ok(line.includes('legs'));
+  assert.ok(line.toLowerCase().includes('challenge'), line);
+});
+
+test('CHALLENGE_QUIPS rotate deterministically and never contain an em-dash', () => {
+  assert.ok(CHALLENGE_QUIPS.length >= 3);
+  assert.equal(pickFrom(CHALLENGE_QUIPS, '2026-07-10'), pickFrom(CHALLENGE_QUIPS, '2026-07-10'));
+  for (const q of CHALLENGE_QUIPS) assert.ok(!q.includes('—'), q);
 });

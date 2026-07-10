@@ -20,6 +20,13 @@ const baseOpts = {
 };
 
 export function drawCharts(state) {
+  // Chart.js is loaded with `defer`; a cache-primed first render can beat it.
+  // Wait for its script to land, then draw (the next render also redraws).
+  if (typeof Chart === 'undefined') {
+    document.querySelector('script[src*="chart.umd"]')
+      ?.addEventListener('load', () => drawCharts(state), { once: true });
+    return;
+  }
   drawWeight(state);
   drawSteps(state);
 }

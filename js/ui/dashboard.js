@@ -1,8 +1,10 @@
 import {
   teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks
 } from '../lib/aggregate.js';
+import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
-import { stepsComment, workoutsComment, weightComment, banterFresh } from '../lib/banter.js';
+import { pickFrom, stepsComment, workoutsComment, weightComment, banterFresh, CHALLENGE_QUIPS } from '../lib/banter.js';
+import { saveEntry } from '../firebase.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 
@@ -24,6 +26,39 @@ function tilesHtml(t) {
     ${tile(`${t.membersAt3}/${t.totalMembers}`, 'hit 3+ this wk', t.membersAt3 === t.totalMembers && t.totalMembers > 0)}
     ${tile(t.totalSteps.toLocaleString(), 'team steps this wk')}
   </div>`;
+}
+
+// One bodyweight exercise a day, same for everyone, ramping weekly. Ticking
+// it writes dailyChallenge:true onto today's entry; streaks are consecutive
+// ticked days. Hidden once the challenge window has ended.
+function challengeCard(state, today) {
+  const ch = dailyChallenge(today, state.challenge.startDate);
+  const doneIds = challengeDoneOn(state.entries, today);
+  const me = state.currentUser;
+  const meDone = doneIds.includes(me.id);
+  const streakOf = (id) => challengeStreak(state.entries, id, today);
+  const myStreak = streakOf(me.id);
+
+  const doneChips = state.users
+    .filter(u => doneIds.includes(u.id))
+    .map(u => {
+      const s = streakOf(u.id);
+      return `<span class="font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}${s >= 2 ? ` 🔥${s}` : ''}</span>`;
+    }).join('<span class="text-neutral-600"> · </span>');
+
+  return `
+    <div class="flex items-center justify-between">
+      <h3 class="font-black">DAILY CHALLENGE</h3>
+      ${myStreak >= 2 ? `<span class="text-sm font-black text-accent">🔥 ${myStreak}-day streak</span>` : ''}
+    </div>
+    <p class="mt-1 text-3xl font-black tracking-tight text-accent">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
+    ${quip(pickFrom(CHALLENGE_QUIPS, today))}
+    ${meDone
+      ? `<p class="mt-3 rounded-xl bg-green-400/10 border border-green-400/30 py-3 text-center
+           text-sm font-black text-green-400">DONE TODAY 💪</p>`
+      : `<button id="challenge-done" class="mt-3 w-full rounded-xl bg-accent py-3 text-sm font-black
+           text-black active:bg-accentDim">I'VE DONE IT ✔</button>`}
+    ${doneChips ? `<p class="mt-2 text-xs text-neutral-500">Done today: ${doneChips}</p>` : ''}`;
 }
 
 function dotsRow(days, count) {
@@ -160,6 +195,7 @@ export function renderDashboard(container, state) {
             (today < c.startDate ? `Starts ${esc(c.startDate)}` : 'Challenge finished')}</p>
       </header>
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
+      ${today <= c.endDate ? card(challengeCard(state, today)) : ''}
       ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>
@@ -177,5 +213,20 @@ export function renderDashboard(container, state) {
 
   renderFeed(container.querySelector('#feed'), state.entries, ai);
   initWorkoutTooltip(container.querySelector('#workouts-card'));
+
+  // Tick today's challenge; the Firestore snapshot re-render flips the card
+  // (instant with local persistence's latency compensation).
+  container.querySelector('#challenge-done')?.addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'SAVING…';
+    try {
+      await saveEntry(state.currentUser.id, state.currentUser.name, todayStr(), { dailyChallenge: true });
+    } catch (err) {
+      console.error(err);
+      btn.disabled = false;
+      btn.textContent = "I'VE DONE IT ✔";
+    }
+  });
   import('../charts.js').then(m => m.drawCharts(state)).catch(() => {});
 }

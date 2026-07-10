@@ -42,6 +42,23 @@ absolute weight in kg - trends and deltas only.
 in a group chat and they make the banter smell like AI. Use a comma, a full
 stop, or a plain hyphen (-) instead.
 
+### Daily challenge
+
+Each day has one bodyweight challenge (push ups, air squats, jumping jacks,
+burpees, or high knees) anyone can do in or out of a workout; reps ramp up
+each week. An entry with `dailyChallenge: true` means that bloke ticked it
+off that day; consecutive ticked days are a streak. To see what a given
+day's challenge actually was, run from the repo root:
+
+```bash
+node -e "import('./js/lib/challenge.js').then(m => console.log(JSON.stringify(m.dailyChallenge('<YYYY-MM-DD>', '<challenge startDate>'))))"
+```
+
+Treat it like everything else in the data: praise long streaks hard, roast a
+freshly broken streak or a bloke who's never ticked one, and name the actual
+exercise ("knocked over the 30 burpees before smoko") when it lands better
+than the generic mention.
+
 ### Nickname bank
 
 Same tradie-nickname well the offline templates (`js/lib/banter.js`,

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Six-hourly banter refresh, run by launchd (com.teamlift.banter) at
-# 00:47 / 06:47 / 12:47 / 18:47, plus RunAtLoad. Uses the Pro subscription
+# Hourly banter refresh, run by launchd (com.teamlift.banter) every 3600 s
+# plus RunAtLoad. Uses the Pro subscription
 # via a long-lived token from `claude setup-token`, stored in
 # ~/.config/teamlift/claude-token (chmod 600). Safe to run by hand.
 #
@@ -186,7 +186,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export CLAUDE_CODE_OAUTH_TOKEN="$(cat "$TOKEN_FILE")"
 cd "$REPO"
 claude -p "/refresh-banter $CHANGED" \
-  --allowedTools "Bash(curl:*)" "Bash(python3:*)" "Bash(date:*)" \
+  --allowedTools "Bash(curl:*)" "Bash(python3:*)" "Bash(date:*)" "Bash(node:*)" \
   --max-turns 25
 CLAUDE_EXIT=$?
 echo "claude exit=$CLAUDE_EXIT"

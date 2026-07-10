@@ -66,3 +66,6 @@ export function route() {
 
 restoreSession();
 route();
+
+// PWA: relative path keeps the scope correct under the GitHub Pages subpath.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

@@ -1,11 +1,16 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getFirestore, collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './config.js';
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// IndexedDB persistence: repeat visits paint instantly from the local cache
+// (onSnapshot fires with cached data first) and live updates stream in behind.
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 
 const millis = (ts) => (ts && typeof ts.toMillis === 'function') ? ts.toMillis() : 0;
 

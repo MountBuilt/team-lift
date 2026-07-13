@@ -25,7 +25,7 @@ export function banterFresh(banter, todayStr) {
 // A nickname is NEVER a bare tag ("Sam's a Show Bag"). The nickname alone
 // isn't the joke — the `punchline` explaining the joke is the joke, and an
 // optional `nudge` lands a call to action on the group. See
-// .claude/skills/refresh-banter/SKILL.md for the full authored table this
+// .claude/skills/copywriter/SKILL.md for the full authored table this
 // is drawn from.
 //
 // Which CANDIDATE from a pool gets used can rotate day to day (via

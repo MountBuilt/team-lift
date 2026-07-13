@@ -1,6 +1,7 @@
 import { entriesInWindow, weeklyWorkoutCount } from '../lib/aggregate.js';
 import { formatShort, todayStr, mondayOf } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
+import { pushSupported, enablePush, disablePush } from '../push.js';
 
 let meChart = null;
 
@@ -11,6 +12,7 @@ export function renderMe(container, state, { onEdit, onLogout }) {
     .sort((a, b) => a.date < b.date ? 1 : -1);
   const weights = [...mine].reverse().filter(e => typeof e.weight === 'number');
   const wkCount = weeklyWorkoutCount(state.entries, me.id, mondayOf(todayStr()));
+  const pushOn = me.push?.enabled === true;
 
   const row = (e) => {
     const bits = [];
@@ -42,12 +44,41 @@ export function renderMe(container, state, { onEdit, onLogout }) {
         <h3 class="mb-2 font-black">MY ENTRIES <span class="text-xs text-neutral-500 font-bold">tap to edit</span></h3>
         ${mine.map(row).join('') || '<p class="text-sm text-neutral-500">Nothing logged yet.</p>'}
       </section>
+      <section class="rounded-2xl bg-card border border-edge p-4">
+        <h3 class="mb-2 font-black">NOTIFICATIONS</h3>
+        ${pushSupported() ? `
+        <p class="text-sm text-neutral-400">Morning motivation plus an evening kick up the arse if you haven't logged anything.</p>
+        <button id="push-toggle" class="mt-3 w-full rounded-xl border border-edge py-3 text-sm font-black
+          ${pushOn ? 'text-green-400' : 'text-neutral-400'}">
+          ${pushOn ? 'NOTIFICATIONS ON' : 'TURN ON NOTIFICATIONS'}</button>`
+      : '<p class="text-sm text-neutral-500">Install the app to your home screen first, then this switch turns up.</p>'}
+      </section>
       <button id="logout" class="py-3 text-sm font-bold text-neutral-600">Log out</button>
     </div>`;
 
   container.querySelectorAll('.entry-row').forEach(b =>
     b.addEventListener('click', () => onEdit(b.dataset.date)));
   container.querySelector('#logout').addEventListener('click', onLogout);
+
+  const toggle = container.querySelector('#push-toggle');
+  toggle?.addEventListener('click', async () => {
+    toggle.disabled = true;
+    toggle.textContent = 'WORKING…';
+    try {
+      if (pushOn) {
+        await disablePush(me.id, me);
+      } else {
+        const res = await enablePush(me.id);
+        if (!res.ok) {
+          toggle.textContent = 'BLOCKED. ALLOW NOTIFICATIONS IN SETTINGS.';
+          return;
+        }
+      }
+    } catch {
+      toggle.textContent = 'FAILED. TAP TO TRY AGAIN.';
+      toggle.disabled = false;
+    }
+  });
 
   meChart?.destroy();
   meChart = null;

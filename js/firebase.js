@@ -60,3 +60,7 @@ export async function saveEntry(userId, userName, date, fields) {
     updatedAt: serverTimestamp()
   }, { mergeFields: ['userId', 'name', 'date', 'updatedAt', 'createdAt', ...Object.keys(fields)] });
 }
+
+export async function updateUserPush(userId, push) {
+  await setDoc(doc(db, 'users', userId), { push }, { mergeFields: ['push'] });
+}

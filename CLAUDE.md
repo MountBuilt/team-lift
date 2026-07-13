@@ -12,6 +12,9 @@ Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
 - Run locally: `python3 -m http.server 8000` then open http://localhost:8000
 - Deploy: push to `main` (GitHub Pages serves repo root)
 - Firestore rules deploy: `firebase deploy --only firestore:rules`
+- Hourly tick (banter + pushes) by hand: `bash scripts/refresh-banter.sh`
+  (wrapper for `node scripts/orchestrator.mjs`; supports `--dry-run` and
+  `--send-test <userId>`; logs to `~/Library/Logs/teamlift-banter.log`)
 - Tailwind rebuild (needed whenever HTML/JS gains a utility class not already
   in use): `npx tailwindcss@3.4.17 -i css/tailwind.source.css -o css/tailwind.css --minify`
 
@@ -33,3 +36,11 @@ Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
   entry doc; streaks are consecutive ticked days.
 - Team weight chart plots actual kg but keeps exact values obscured: coarse
   10 kg y-axis ticks, tooltips show change vs first weigh-in (never absolute kg).
+- Web push (`js/push.js`, toggle on the Me view): raw VAPID, subscription
+  stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs` on the
+  hourly launchd tick: morning motivation from 7:30am (skipped after 8:30pm),
+  evening reminder from 8:30pm only if nothing is logged that day; state in
+  `config/push` (`lastMorning`/`lastEvening`) so missed ticks self-heal and
+  never double-send. Claude (Sonnet) writes all copy via
+  `.claude/skills/copywriter` from a pre-built context file and never touches
+  the network; the orchestrator owns every fetch, hash, PATCH, and send.

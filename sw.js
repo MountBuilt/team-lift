@@ -31,3 +31,24 @@ async function staleWhileRevalidate(request) {
   }).catch(() => cached);
   return cached || refresh;
 }
+
+// Web push: payload is JSON { title, body } sent by scripts/orchestrator.mjs.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data.json(); } catch { /* malformed payload: show fallback */ }
+  event.waitUntil(self.registration.showNotification(data.title || 'Team Lift', {
+    body: data.body || 'Get after it.',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png'
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ('focus' in c) return c.focus();
+      return clients.openWindow('.');
+    })
+  );
+});

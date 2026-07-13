@@ -1,0 +1,9 @@
+{
+  "name": "teamlift-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Local sender tooling for the hourly launchd job. Never served by the site.",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

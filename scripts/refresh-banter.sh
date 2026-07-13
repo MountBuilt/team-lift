@@ -187,7 +187,7 @@ export CLAUDE_CODE_OAUTH_TOKEN="$(cat "$TOKEN_FILE")"
 cd "$REPO"
 claude -p "/refresh-banter $CHANGED" \
   --allowedTools "Bash(curl:*)" "Bash(python3:*)" "Bash(date:*)" "Bash(node:*)" \
-  --max-turns 25
+  --max-turns 50
 CLAUDE_EXIT=$?
 echo "claude exit=$CLAUDE_EXIT"
 

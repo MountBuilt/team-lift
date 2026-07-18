@@ -2,6 +2,7 @@
 // pushes are due. No network, no clock reads; callers pass `now` and `today`.
 import { createHash } from 'node:crypto';
 import { addDays } from '../../js/lib/dates.js';
+import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
 export const MORNING_AFTER = '07:30';
 export const MORNING_CUTOFF = '20:30'; // a fully missed morning is skipped, never sent at night
@@ -17,6 +18,12 @@ const hhmm = (now) => `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 export function computeHashes(users, entries, today) {
   const usersKey = users
     .map(u => [u.id, u.name ?? null])
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  // Fold the ACTIVE storylines into every hash the same way the roster is, so
+  // adding a storyline or one expiring forces the cards to regenerate on the
+  // next tick instead of waiting for entry data to change.
+  const storyKey = activeStorylines(STORYLINES, today)
+    .map(s => [s.id, s.subject, s.until])
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const feedStart = addDays(today, -6);
 
@@ -34,7 +41,7 @@ export function computeHashes(users, entries, today) {
   weight.sort(byUserDate); steps.sort(byUserDate); workouts.sort(byUserDate); feed.sort(byUserDate);
 
   const hash = (rows) =>
-    createHash('sha256').update(JSON.stringify([usersKey, rows])).digest('hex');
+    createHash('sha256').update(JSON.stringify([usersKey, storyKey, rows])).digest('hex');
   return { weight: hash(weight), steps: hash(steps), workouts: hash(workouts), feed: hash(feed) };
 }
 

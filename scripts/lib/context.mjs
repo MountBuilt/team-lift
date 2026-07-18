@@ -2,6 +2,8 @@
 // it returns. Pure: no network, no clock.
 import { dailyChallenge, challengeStreak } from '../../js/lib/challenge.js';
 import { addDays } from '../../js/lib/dates.js';
+import { restDayStatus } from '../../js/lib/banter.js';
+import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
 const entryView = (e) => {
   const out = { id: e.id, userId: e.userId, name: e.name, date: e.date, updatedAt: e.updatedAt ?? '' };
@@ -25,23 +27,42 @@ export function buildContext({ users, entries, banter, challengeStart, changed, 
     .sort((a, b) => (a.id < b.id ? -1 : 1))
     .map(e => ({ entryId: e.id, ...entryView(e) }));
 
-  const pushFor = (kind) => (u) => ({
-    kind,
-    userId: u.id,
-    name: u.name,
-    streak: challengeStreak(entries, u.id, today),
-    recentDays: entries
-      .filter(e => e.userId === u.id && e.date >= recentStart)
-      .sort((a, b) => (a.date < b.date ? -1 : 1))
-      .map(entryView)
-  });
+  const pushFor = (kind) => (u) => {
+    // Same-day grace baked into the data: emptyDays counts only COMPLETED
+    // empty days (today is never counted), so morning copy calls out a real
+    // layoff and evening copy can never roast a bloke for "today" being blank.
+    const rest = restDayStatus(entries, u.id, today);
+    return {
+      kind,
+      userId: u.id,
+      name: u.name,
+      streak: challengeStreak(entries, u.id, today),
+      emptyDays: rest.emptyDays,   // consecutive empty completed days, today graced
+      resting: rest.resting,       // 1-2 empty days = legit rest, ease off
+      fairGame: rest.fairGame,     // 3+ empty days = pile on
+      recentDays: entries
+        .filter(e => e.userId === u.id && e.date >= recentStart)
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+        .map(entryView)
+    };
+  };
 
   return {
     today,
     challenge,
+    // Grace rules the copywriter must honour, restated in the data so they are
+    // impossible to miss (full guidance in the copywriter SKILL.md).
+    grace: {
+      sameDay: 'Today is never a missed, lazy, skipped or rest day. Only roast inactivity on completed days (yesterday and earlier). The evening push is pure encouragement, never a roast for not logging today.',
+      restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.'
+    },
     users: users.map(u => ({ id: u.id, name: u.name })),
     entries: entries.map(entryView),
     sections: [...changed],
+    // Active topical storylines to weave in where they fit and are funny. They
+    // expire on their own; an empty array means run general banter.
+    storylines: activeStorylines(STORYLINES, today)
+      .map(s => ({ id: s.id, subject: s.subject, until: s.until, note: s.note })),
     currentCards: banter?.cards ?? {},
     history: banter?.history ?? [],
     feedNeeds,

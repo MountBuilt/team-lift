@@ -34,6 +34,34 @@ test('buildContext: challenge, feedNeeds, pushes', () => {
   assert.ok(p.recentDays.every(e => e.date >= '2026-06-29')); // 14-day window
 });
 
+test('buildContext: includes active storylines and the grace rules', () => {
+  const ctx = buildContext(base); // today 2026-07-13, seeded storylines run to 07-25
+  assert.ok(Array.isArray(ctx.storylines) && ctx.storylines.length >= 1);
+  for (const s of ctx.storylines) {
+    assert.ok(s.id && s.subject && s.until && s.note);
+    assert.ok(s.until >= ctx.today, 'only active storylines are passed through');
+  }
+  assert.ok(ctx.grace && /never/i.test(ctx.grace.sameDay));
+  assert.ok(/rest/i.test(ctx.grace.restDays));
+});
+
+test('buildContext: an expired storyline window drops all storylines', () => {
+  const ctx = buildContext({ ...base, challengeStart: '2030-01-01', today: '2030-01-01' });
+  assert.deepEqual(ctx.storylines, []);
+});
+
+test('buildContext: pushes carry same-day-graced rest status (emptyDays never counts today)', () => {
+  // Simon logged 2026-07-12 (a workout) and nothing since; today is 07-13, so
+  // yesterday was logged => emptyDays 0, today's blank is graced.
+  const ctx = buildContext(base);
+  const p = ctx.pushes[0];
+  assert.equal(p.userId, 'u1');
+  assert.equal(p.emptyDays, 0);
+  assert.equal(p.resting, false);
+  assert.equal(p.fairGame, false);
+  assert.equal(typeof p.streak, 'number');
+});
+
 test('buildContext: changed updatedAt re-flags a feed entry', () => {
   const stale = { ...banter, feedMeta: { 'u1_2026-07-12': 'ts-OLD' } };
   const ctx = buildContext({ ...base, banter: stale });

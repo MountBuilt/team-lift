@@ -1,7 +1,200 @@
 /* Only what Tailwind utility classes can't express. */
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+  --ember: #f97316;
+  --flame: #fbbf24;
+  --heat: linear-gradient(135deg, #f97316 20%, #fbbf24 100%);
+}
 body { font-family: -apple-system, "Inter", "Segoe UI", Roboto, sans-serif; }
 input[type="number"] { -moz-appearance: textfield; }
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .modal-open { overflow: hidden; }
+
+/* ---- Display face: Anton (self-hosted, OFL). Poster type for titles and
+   big numbers only; body copy stays on the system stack. ---- */
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../fonts/anton-latin.woff2') format('woff2');
+}
+.display {
+  font-family: 'Anton', 'Arial Narrow', -apple-system, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+/* Heat gradient text: reserved for the moments that matter. */
+.heat-text {
+  background: var(--heat);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Quiet card eyebrows so the data owns the card. */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #737373;
+}
+
+/* Coach's call: how banter lines land on a card. */
+.coach {
+  margin-top: 0.75rem;
+  padding: 0.4rem 0 0.4rem 0.75rem;
+  border-left: 3px solid var(--ember);
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.5;
+  color: #a3a3a3;
+}
+
+/* ---- Ambient ember glow behind the scoreboard header. ---- */
+.ember-bg {
+  position: relative;
+  isolation: isolate;
+}
+.ember-bg::before {
+  content: '';
+  position: absolute;
+  inset: -3rem -2rem auto -2rem;
+  height: 16rem;
+  background:
+    radial-gradient(60% 100% at 30% 0%, rgba(249, 115, 22, 0.18), transparent 70%),
+    radial-gradient(40% 80% at 80% 0%, rgba(251, 191, 36, 0.08), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ---- Challenge progress bar: the heat strip. ---- */
+.heatbar {
+  height: 6px;
+  border-radius: 999px;
+  background: #232323;
+  overflow: hidden;
+}
+.heatbar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--heat);
+  background-size: 200% 100%;
+  animation: heat-shimmer 2.6s linear infinite;
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes heat-shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ---- Entrance choreography. Cards carry .fx-card and a --fx-i stagger
+   index; the view container only gets .fx-on on a real visit (first load or
+   tab switch), so Firestore snapshot re-renders never replay the show. ---- */
+.fx-on .fx-card {
+  animation: fx-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--fx-i, 0) * 80ms);
+}
+@keyframes fx-rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.fx-on .fx-dot {
+  animation: fx-dot-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--fx-i, 0) * 80ms + var(--fx-j, 0) * 45ms + 250ms);
+}
+@keyframes fx-dot-pop {
+  from { opacity: 0; transform: scale(0); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Streak flames breathe. */
+.flame {
+  display: inline-block;
+  animation: flame-pulse 1.8s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+@keyframes flame-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
+
+/* DONE stamp: slams in once when you tick the challenge. */
+.stamp {
+  animation: stamp-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes stamp-in {
+  0% { opacity: 0; transform: scale(1.6) rotate(-4deg); }
+  60% { opacity: 1; transform: scale(0.96) rotate(1deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+/* Whole-team banner: slow celebratory sheen. */
+.team-hit {
+  background: linear-gradient(110deg,
+    rgba(74, 222, 128, 0.1) 30%, rgba(74, 222, 128, 0.24) 50%, rgba(74, 222, 128, 0.1) 70%);
+  background-size: 250% 100%;
+  animation: heat-shimmer 3.2s linear infinite;
+}
+
+/* Big-effort feed rows get an ember edge. */
+.big-effort {
+  border-left: 3px solid var(--ember);
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.08), transparent 65%);
+}
+
+/* ---- Log modal: sheet slides up, backdrop fades. ---- */
+.sheet-backdrop { animation: fade-in 0.25s ease both; }
+.sheet { animation: sheet-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-up {
+  from { opacity: 0.4; transform: translateY(48px); }
+  to { opacity: 1; transform: none; }
+}
+.part-chip { transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }
+.part-chip:active { transform: scale(0.92); }
+.chip-pop { animation: chip-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes chip-pop {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+/* FAB: heat gradient, pressed feel. */
+#fab {
+  background: var(--heat);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+#fab:active { transform: scale(0.9); }
+
+/* Buttons squash a touch when pressed. */
+.pressable { transition: transform 0.12s ease; }
+.pressable:active { transform: scale(0.97); }
+
+/* Confetti pieces (spawned by js/ui/fx.js, animated via WAAPI). */
+.confetti-piece {
+  position: fixed;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 90;
+}
+
+/* Tooltip fade. */
+#workout-tooltip { animation: fade-in 0.15s ease both; }
+
+/* ---- Reduced motion: the show degrades to a plain render. ---- */
+@media (prefers-reduced-motion: reduce) {
+  .fx-on .fx-card, .fx-on .fx-dot, .stamp, .sheet, .sheet-backdrop, .chip-pop {
+    animation: none;
+  }
+  .heatbar-fill, .team-hit, .flame { animation: none; }
+  .heatbar-fill { transition: none; }
+  .part-chip, #fab, .pressable { transition: none; }
+}

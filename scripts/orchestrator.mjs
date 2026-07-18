@@ -115,7 +115,11 @@ async function main() {
       '-p', `/copywriter ${workdir}`,
       '--model', 'sonnet',
       '--allowedTools', 'Read', 'Write',
-      '--max-turns', '15'
+      // The copywriter reads context, weaves storylines and continuity, and
+      // self-checks its copy against the char limits and grace rules before
+      // writing - that takes more than a couple of turns. 15 was too tight
+      // once storylines and the richer guidance landed; 30 gives headroom.
+      '--max-turns', '30'
     ], { cwd: REPO, stdio: 'inherit' });
     copy = JSON.parse(readFileSync(join(workdir, 'copy.json'), 'utf8'));
     const verdict = validateCopy(copy, context);

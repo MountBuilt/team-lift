@@ -7,7 +7,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/simongilmore/Documents/Projects/team-lift/scripts/refresh-banter.sh</string>
+    <string>/Users/simongilmore/Projects/team-lift/scripts/refresh-banter.sh</string>
   </array>
   <!-- Hourly; launchd coalesces missed runs into one on wake from sleep.
        Cheap to run this often: the script hashes each dashboard section and

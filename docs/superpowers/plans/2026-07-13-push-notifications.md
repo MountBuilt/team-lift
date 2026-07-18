@@ -63,12 +63,12 @@ node_modules/
 
 - [ ] **Step 2: Install**
 
-Run: `cd /Users/simongilmore/Documents/Projects/team-lift/scripts && npm install`
+Run: `cd /Users/simongilmore/Projects/team-lift/scripts && npm install`
 Expected: `added N packages`, creates `scripts/node_modules/` (ignored) and `scripts/package-lock.json` (committed).
 
 - [ ] **Step 3: Generate the VAPID keypair**
 
-Run: `cd /Users/simongilmore/Documents/Projects/team-lift/scripts && npx web-push generate-vapid-keys`
+Run: `cd /Users/simongilmore/Projects/team-lift/scripts && npx web-push generate-vapid-keys`
 Expected output contains a `Public Key:` and `Private Key:` (both base64url strings).
 
 - [ ] **Step 4: Store the private key**
@@ -217,7 +217,7 @@ test('buildPatchUrl percent-encodes backticks in the mask', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/simongilmore/Documents/Projects/team-lift && node --test tests/firestore-rest.test.js`
+Run: `cd /Users/simongilmore/Projects/team-lift && node --test tests/firestore-rest.test.js`
 Expected: FAIL, cannot find module `scripts/lib/firestore-rest.mjs`.
 
 - [ ] **Step 3: Implement `scripts/lib/firestore-rest.mjs`**
@@ -1239,7 +1239,7 @@ exec node "$REPO/scripts/orchestrator.mjs" "$@"
 
 - [ ] **Step 4: Dry-run against live data**
 
-Run: `cd /Users/simongilmore/Documents/Projects/team-lift && node scripts/orchestrator.mjs --dry-run`
+Run: `cd /Users/simongilmore/Projects/team-lift && node scripts/orchestrator.mjs --dry-run`
 Expected: logs `changed=[...]` (likely all four sections, because the hash format changed from python to JS - a known one-time effect), invokes Claude on Sonnet, prints `[dry-run] PATCH config/banter ...` with a mask containing `date`, `hashes.*`, changed `cards.*`; prints `[dry-run] push to ...` lines only if a push window is currently due AND someone has opted in (nobody has yet, so normally none). **No real writes and no real sends.** If the Claude call fails, fix before proceeding; do not weaken validation to pass. (If the nested `claude` call can't authenticate when run bare, use `CLAUDE_CODE_OAUTH_TOKEN="$(cat ~/.config/teamlift/claude-token)" node scripts/orchestrator.mjs --dry-run`.)
 
 - [ ] **Step 5: Commit**

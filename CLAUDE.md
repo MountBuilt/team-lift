@@ -30,6 +30,14 @@ Spec: docs/superpowers/specs/2026-07-08-team-lift-design.md
   Deterministic seeded picks so quips rotate daily and stay testable.
   No em-dashes in any user-facing copy or banter (they read as AI-written);
   use a comma, full stop, or plain hyphen.
+- Topical storylines (`scripts/storylines.mjs`): real-world banter fed from
+  the group chat. Each entry is `{ id, subject, until, note }` (`subject` = a
+  bloke's name or `'team'`, `until` = inclusive last-active `YYYY-MM-DD`).
+  `context.mjs` passes the active set to the copywriter, which weaves them in;
+  they're folded into the card hashes so adding/expiring one regenerates the
+  cards next tick, then it reverts to general banter on its own. To add one,
+  edit the array. Same-day grace: nobody is roasted for not-yet-logging today,
+  and 1-2 empty days = rest (`REST_GRACE_DAYS`), 3+ = fair game.
 - Daily challenge (`js/lib/challenge.js`): one bodyweight exercise per day,
   a pure function of the date (no backend state), reps ramp weekly from the
   challenge start. Ticking it writes `dailyChallenge: true` on that day's

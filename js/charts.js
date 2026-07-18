@@ -19,19 +19,28 @@ const baseOpts = {
   }
 };
 
-export function drawCharts(state) {
+// Entrance-only animation: charts sweep in when the user actually navigates
+// to the view; Firestore snapshot redraws stay instant. Reduced motion always
+// stays instant.
+const reducedMotion = () =>
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+const entranceAnimation = (animate) =>
+  animate && !reducedMotion() ? { duration: 800, easing: 'easeOutQuart' } : false;
+
+export function drawCharts(state, { animate = false } = {}) {
   // Chart.js is loaded with `defer`; a cache-primed first render can beat it.
   // Wait for its script to land, then draw (the next render also redraws).
   if (typeof Chart === 'undefined') {
     document.querySelector('script[src*="chart.umd"]')
-      ?.addEventListener('load', () => drawCharts(state), { once: true });
+      ?.addEventListener('load', () => drawCharts(state, { animate }), { once: true });
     return;
   }
-  drawWeight(state);
-  drawSteps(state);
+  drawWeight(state, animate);
+  drawSteps(state, animate);
 }
 
-function drawWeight(state) {
+function drawWeight(state, animate) {
   const canvas = document.getElementById('weight-chart');
   if (!canvas) return;
   weightChart?.destroy();
@@ -70,6 +79,7 @@ function drawWeight(state) {
     },
     options: {
       ...baseOpts,
+      animation: entranceAnimation(animate),
       interaction: { mode: 'nearest', intersect: false },
       plugins: {
         ...baseOpts.plugins,
@@ -101,7 +111,7 @@ function drawWeight(state) {
   });
 }
 
-function drawSteps(state) {
+function drawSteps(state, animate) {
   const canvas = document.getElementById('steps-chart');
   if (!canvas) return;
   stepsChart?.destroy();
@@ -128,6 +138,7 @@ function drawSteps(state) {
     },
     options: {
       ...baseOpts,
+      animation: entranceAnimation(animate),
       plugins: {
         ...baseOpts.plugins,
         tooltip: {

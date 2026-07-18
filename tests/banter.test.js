@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
-  nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS
+  nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS,
+  hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
 
@@ -300,4 +301,99 @@ test('CHALLENGE_QUIPS rotate deterministically and never contain an em-dash', ()
   assert.ok(CHALLENGE_QUIPS.length >= 3);
   assert.equal(pickFrom(CHALLENGE_QUIPS, '2026-07-10'), pickFrom(CHALLENGE_QUIPS, '2026-07-10'));
   for (const q of CHALLENGE_QUIPS) assert.ok(!q.includes('—'), q);
+});
+
+// ---- Same-day grace + rest days ----
+
+test('hasAnyLog: an empty day counts as nothing, any real field counts', () => {
+  assert.equal(hasAnyLog(e('u1', '2026-07-13')), false);
+  assert.equal(hasAnyLog(e('u1', '2026-07-13', { steps: 0 })), false); // zero steps is not a log
+  assert.equal(hasAnyLog(e('u1', '2026-07-13', { steps: 4000 })), true);
+  assert.equal(hasAnyLog(e('u1', '2026-07-13', { workoutParts: ['legs'] })), true);
+  assert.equal(hasAnyLog(e('u1', '2026-07-13', { weight: 90 })), true);
+  assert.equal(hasAnyLog(e('u1', '2026-07-13', { dailyChallenge: true })), true);
+});
+
+test('emptyDayStreak never counts today and stops at the last logged day', () => {
+  const entries = [
+    e('u1', '2026-07-13', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-16', { steps: 5000 })
+  ];
+  // today 07-16 (logged today): yesterday 07-15 empty, 07-14 empty, 07-13 logged => 2
+  assert.equal(emptyDayStreak(entries, 'u1', '2026-07-16'), 2);
+  // today 07-14: yesterday 07-13 logged => 0 (active), today 07-14 blank is graced
+  assert.equal(emptyDayStreak(entries, 'u1', '2026-07-14'), 0);
+  // today 07-13 (only-ever log is today): nothing behind it, today graced => walks back to the cap
+  assert.ok(emptyDayStreak(entries, 'u1', '2026-07-13') >= 3);
+});
+
+test('restDayStatus classifies active / resting / fair game, with today always graced', () => {
+  const entries = [e('u1', '2026-07-13', { steps: 5000 })];
+  assert.deepEqual(restDayStatus(entries, 'u1', '2026-07-14'),
+    { emptyDays: 0, active: true, resting: false, fairGame: false });
+  const r2 = restDayStatus(entries, 'u1', '2026-07-16'); // 2 empty completed days
+  assert.equal(r2.emptyDays, REST_GRACE_DAYS);
+  assert.ok(r2.resting && !r2.fairGame);
+  const r3 = restDayStatus(entries, 'u1', '2026-07-17'); // 3 empty completed days
+  assert.equal(r3.emptyDays, 3);
+  assert.ok(r3.fairGame && !r3.resting);
+});
+
+test('workoutsComment: same-day grace - nobody is a slacker on a day with no completed day behind it', () => {
+  // Monday IS today; only Sam has trained (today). Alex/Bruce are blank today,
+  // but today is graced so they must never be roasted as slackers.
+  const monday = '2026-07-13';
+  const entries = [e('u1', '2026-07-13', { workoutParts: ['legs'] })];
+  for (let i = 0; i < 30; i++) {
+    const c = workoutsComment(entries, users, monday, `seed-${i}`, '2026-07-13');
+    assert.ok(!/Alex|Bruce/.test(c), `today-only week should not roast the blank blokes: ${c}`);
+  }
+});
+
+test('workoutsComment: rest-day grace - a bloke on a legit 1-2 day rest is left alone', () => {
+  const monday = '2026-07-13';
+  const today = '2026-07-16'; // Thursday
+  const entries = [
+    e('u1', '2026-07-13', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-14', { workoutParts: ['chest'] }), // Sam trains most
+    e('u2', '2026-07-13', { workoutParts: ['back'] }),  // Alex trained a completed day
+    e('u3', '2026-07-14', { steps: 8000 })              // Bruce: logged, no workout, 1 empty day since
+  ];
+  for (let i = 0; i < 30; i++) {
+    const c = workoutsComment(entries, users, monday, `seed-${i}`, today);
+    assert.ok(!c.includes('Bruce'), `resting bloke should not be roasted: ${c}`);
+  }
+});
+
+test('workoutsComment: a bloke AWOL 3+ completed days is fair game', () => {
+  const monday = '2026-07-13';
+  const today = '2026-07-17'; // Friday
+  const entries = [
+    e('u1', '2026-07-13', { workoutParts: ['legs'] }),
+    e('u1', '2026-07-16', { workoutParts: ['chest'] })
+    // Alex and Bruce: nothing all week => 3+ empty completed days
+  ];
+  let roasted = false;
+  for (let i = 0; i < 60 && !roasted; i++) {
+    const c = workoutsComment(entries, users, monday, `seed-${i}`, today);
+    if (/Alex|Bruce/.test(c)) roasted = true;
+  }
+  assert.ok(roasted, 'expected the AWOL blokes to get called out on some seed');
+});
+
+test('stepsComment: same-day grace - a lone stepper on day one is encouraged, not used to roast the rest', () => {
+  const monday = '2026-07-13';
+  const entries = [e('u2', '2026-07-13', { steps: 6000 })]; // Alex, today = Monday
+  for (let i = 0; i < 20; i++) {
+    const c = stepsComment(entries, users, monday, `seed-${i}`, '2026-07-13');
+    assert.ok(c.includes('Alex'));
+    assert.ok(!/couch|pathetic/i.test(c), `no roast on the first day: ${c}`);
+  }
+  // Once a completed day exists, the sole-stepper roast is back in play.
+  let sawRoast = false;
+  for (let i = 0; i < 40 && !sawRoast; i++) {
+    const c = stepsComment(entries, users, monday, `seed-${i}`, '2026-07-15');
+    if (/couch|carrying|walking|forgotten/i.test(c)) sawRoast = true;
+  }
+  assert.ok(sawRoast, 'expected a sole-stepper roast once completed days exist');
 });

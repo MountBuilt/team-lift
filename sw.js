@@ -2,7 +2,7 @@
 // assets so opens are near-instant. After a deploy, a user's first open may
 // serve the previous version; the refreshed copy lands on the next open.
 // Firestore/live data (anything on *.googleapis.com) is never intercepted.
-const CACHE = 'teamlift-v1';
+const CACHE = 'teamlift-v2'; // bumped for the 2026-07 visual redesign (fonts/, new css)
 
 self.addEventListener('install', () => self.skipWaiting());
 

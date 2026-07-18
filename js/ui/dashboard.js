@@ -2,29 +2,57 @@ import {
   teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks
 } from '../lib/aggregate.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
-import { todayStr, mondayOf, addDays, weekNumber, totalWeeks } from '../lib/dates.js';
+import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import { pickFrom, stepsComment, workoutsComment, weightComment, banterFresh, CHALLENGE_QUIPS } from '../lib/banter.js';
 import { saveEntry } from '../firebase.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
+import { runCountUps, burstFrom, compactNumber } from './fx.js';
 
-const card = (inner, extra = '') =>
-  `<section class="rounded-2xl bg-card border border-edge p-4 ${extra}">${inner}</section>`;
+// One-shot celebration: set when the user ticks the challenge, consumed by
+// the next render so the DONE stamp slams in exactly once.
+let celebratePending = false;
 
-// Daily-rotating quip under a card; null comment renders nothing.
-const quip = (comment) => comment
-  ? `<p class="mt-2 text-xs italic leading-relaxed text-neutral-500">${esc(comment)}</p>` : '';
+const card = (inner, i, extra = '') =>
+  `<section class="fx-card rounded-2xl bg-card border border-edge p-4 ${extra}" style="--fx-i:${i}">${inner}</section>`;
+
+// Daily-rotating banter under a card, styled as the coach's call.
+const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
+
+function headerHtml(c, today) {
+  const wk = weekNumber(today, c.startDate);
+  const total = totalWeeks(c.startDate, c.endDate);
+  const inWindow = today >= c.startDate && today <= c.endDate;
+  const totalDays = Math.round((parseLocal(c.endDate) - parseLocal(c.startDate)) / 86400000) + 1;
+  const dayN = Math.min(totalDays, Math.max(0,
+    Math.round((parseLocal(today) - parseLocal(c.startDate)) / 86400000) + 1));
+  const pct = Math.min(100, Math.max(0, (dayN / totalDays) * 100));
+  const sub = inWindow ? `WEEK ${wk} OF ${total}`
+    : (today < c.startDate ? `STARTS ${esc(c.startDate)}` : 'CHALLENGE FINISHED');
+  return `
+    <header class="fx-card ember-bg px-1 pt-2" style="--fx-i:0">
+      <p class="eyebrow">Team Lift · ${sub}</p>
+      <h1 class="display text-[2.6rem] leading-none tracking-tight mt-1">${esc(c.title.toUpperCase())}</h1>
+      <div class="mt-3 heatbar"><div class="heatbar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="mt-1.5 flex justify-between text-[11px] font-bold text-neutral-500">
+        <span>${inWindow ? `Day ${dayN} of ${totalDays}` : ''}</span>
+        <span>${inWindow ? `${totalDays - dayN} days left` : ''}</span>
+      </div>
+    </header>`;
+}
 
 function tilesHtml(t) {
-  const tile = (big, small, hot = false) => `
-    <div class="flex-1 rounded-xl bg-ink border border-edge px-2 py-3 text-center">
-      <p class="text-2xl font-black ${hot ? 'text-accent' : ''}">${big}</p>
-      <p class="text-[11px] font-bold uppercase tracking-wide text-neutral-500">${small}</p>
+  const tile = (big, small, opts = {}) => `
+    <div class="flex-1 rounded-xl bg-ink border ${opts.hot ? 'border-green-400/40' : 'border-edge'} px-2 py-3 text-center">
+      <p class="display text-3xl ${opts.hot ? 'text-green-400' : ''}"
+        ${opts.count ? `data-countup="${opts.count}" data-fmt="${opts.fmt || 'plain'}"` : ''}>${big}</p>
+      <p class="mt-1 eyebrow">${small}</p>
     </div>`;
+  const allHit = t.membersAt3 === t.totalMembers && t.totalMembers > 0;
   return `<div class="flex gap-2">
-    ${tile(t.totalWorkouts, 'workouts this wk')}
-    ${tile(`${t.membersAt3}/${t.totalMembers}`, 'hit 3+ this wk', t.membersAt3 === t.totalMembers && t.totalMembers > 0)}
-    ${tile(t.totalSteps.toLocaleString(), 'team steps this wk')}
+    ${tile(String(t.totalWorkouts), 'workouts<br>this wk', { count: t.totalWorkouts })}
+    ${tile(`${t.membersAt3}/${t.totalMembers}`, 'hit 3+<br>this wk', { count: 0, hot: allHit })}
+    ${tile(compactNumber(t.totalSteps), 'team steps<br>this wk', { count: t.totalSteps, fmt: 'compact' })}
   </div>`;
 }
 
@@ -38,38 +66,40 @@ function challengeCard(state, today) {
   const meDone = doneIds.includes(me.id);
   const streakOf = (id) => challengeStreak(state.entries, id, today);
   const myStreak = streakOf(me.id);
+  const stamp = celebratePending;
+  celebratePending = false;
 
   const doneChips = state.users
     .filter(u => doneIds.includes(u.id))
     .map(u => {
       const s = streakOf(u.id);
-      return `<span class="font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}${s >= 2 ? ` 🔥${s}` : ''}</span>`;
+      return `<span class="font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}${s >= 2 ? ` <span class="flame">🔥</span>${s}` : ''}</span>`;
     }).join('<span class="text-neutral-600"> · </span>');
 
   return `
     <div class="flex items-center justify-between">
-      <h3 class="font-black">DAILY CHALLENGE</h3>
-      ${myStreak >= 2 ? `<span class="text-sm font-black text-accent">🔥 ${myStreak}-day streak</span>` : ''}
+      <h3 class="eyebrow">Daily challenge</h3>
+      ${myStreak >= 2 ? `<span class="text-sm font-black text-accent"><span class="flame">🔥</span> ${myStreak}-day streak</span>` : ''}
     </div>
-    <p class="mt-1 text-3xl font-black tracking-tight text-accent">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
-    ${quip(pickFrom(CHALLENGE_QUIPS, today))}
+    <p class="mt-1 display text-4xl tracking-tight heat-text">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
+    ${coach(pickFrom(CHALLENGE_QUIPS, today))}
     ${meDone
-      ? `<p class="mt-3 rounded-xl bg-green-400/10 border border-green-400/30 py-3 text-center
-           text-sm font-black text-green-400">DONE TODAY 💪</p>`
-      : `<button id="challenge-done" class="mt-3 w-full rounded-xl bg-accent py-3 text-sm font-black
+      ? `<p class="${stamp ? 'stamp ' : ''}mt-3 rounded-xl bg-green-400/10 border border-green-400/30 py-3 text-center
+           display text-lg tracking-wide text-green-400">DONE TODAY 💪</p>`
+      : `<button id="challenge-done" class="pressable mt-3 w-full rounded-xl bg-accent py-3 display text-lg tracking-wide
            text-black active:bg-accentDim">I'VE DONE IT ✔</button>`}
     ${doneChips ? `<p class="mt-2 text-xs text-neutral-500">Done today: ${doneChips}</p>` : ''}`;
 }
 
 function dotsRow(days, count) {
   const hit = count >= 3;
-  const dot = (day) => {
+  const dot = (day, j) => {
     if (day.parts.length === 0) {
-      return `<span class="inline-block h-3.5 w-3.5 rounded-full bg-edge"></span>`;
+      return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full bg-edge" style="--fx-j:${j}"></span>`;
     }
     const label = esc(day.parts.join(' + '));
-    return `<span class="inline-block h-3.5 w-3.5 rounded-full cursor-pointer
-      ${hit ? 'bg-green-400' : 'bg-accent'}" data-parts="${label}" aria-label="${label}"></span>`;
+    return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full cursor-pointer
+      ${hit ? 'bg-green-400' : 'bg-accent'}" style="--fx-j:${j}" data-parts="${label}" aria-label="${label}"></span>`;
   };
   return `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
 }
@@ -84,7 +114,7 @@ function workoutsPanel(state, monday) {
     return `
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
-          ${streak >= 2 ? '<span title="' + streak + '-week streak">🔥</span>' : ''}</span>
+          ${streak >= 2 ? '<span class="flame" title="' + streak + '-week streak">🔥</span>' : ''}</span>
         ${dotsRow(days, count)}
         <span class="w-16 text-right text-sm ${count >= 3 ? 'font-black text-green-400' : 'text-neutral-400'}">
           ${count}/7 <span class="text-neutral-600 text-xs">(${lastCount})</span></span>
@@ -93,11 +123,11 @@ function workoutsPanel(state, monday) {
   const allHit = state.users.length > 0 &&
     state.users.every(u => weeklyWorkoutCount(state.entries, u.id, monday) >= 3);
   return `
-    ${allHit ? `<p class="mb-2 rounded-xl bg-green-400/10 border border-green-400/30
-      px-3 py-2 text-center text-sm font-black text-green-400">
+    ${allHit ? `<p class="team-hit mb-2 rounded-xl border border-green-400/30
+      px-3 py-2 text-center display text-base tracking-wide text-green-400">
       💪 WHOLE TEAM AT 3+ THIS WEEK</p>` : ''}
     <div class="mb-1 flex items-center justify-between">
-      <h3 class="font-black">WORKOUTS THIS WEEK</h3>
+      <h3 class="eyebrow">Workouts this week</h3>
       <span class="text-xs text-neutral-500">last wk in ( )</span>
     </div>
     ${rows || '<p class="text-neutral-500 text-sm">No members yet.</p>'}
@@ -177,56 +207,53 @@ function bindGlobalWorkoutTooltipDismissal() {
   window.addEventListener('scroll', hideActiveWorkoutTooltip, true);
 }
 
-export function renderDashboard(container, state) {
+export function renderDashboard(container, state, { animate = false } = {}) {
   const c = state.challenge;
   const today = todayStr();
   const monday = mondayOf(today);
-  const wk = weekNumber(today, c.startDate);
-  const total = totalWeeks(c.startDate, c.endDate);
-  const inWindow = today >= c.startDate && today <= c.endDate;
   const ai = banterFresh(state.banter, today) ? state.banter : null;
 
   container.innerHTML = `
-    <div class="flex flex-col gap-3 px-4 pb-28 pt-5">
-      <header class="px-1">
-        <h1 class="text-2xl font-black tracking-tight">${esc(c.title.toUpperCase())}</h1>
-        <p class="text-sm font-bold text-neutral-500">
-          ${inWindow ? `Week ${wk} of ${total}` :
-            (today < c.startDate ? `Starts ${esc(c.startDate)}` : 'Challenge finished')}</p>
-      </header>
-      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)))}
-      ${today <= c.endDate ? card(challengeCard(state, today)) : ''}
-      ${card(`<h3 class="mb-2 font-black">WEIGHT (KG)</h3>
+    <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pb-28 pt-5">
+      ${headerHtml(c, today)}
+      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), 1)}
+      ${today <= c.endDate ? card(challengeCard(state, today), 2) : ''}
+      ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>
-        ${quip(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`)}
-      <section id="workouts-card" class="rounded-2xl bg-card border border-edge p-4">
+        ${coach(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`, 3)}
+      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:4">
         ${workoutsPanel(state, monday) +
-          quip(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today))}
+          coach(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today))}
       </section>
-      ${card(`<h3 class="mb-2 font-black">TEAM STEPS · DAILY</h3>
+      ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
         <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>
-        ${quip(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`)}
-      ${card(`<h3 class="mb-2 font-black">RECENT ACTIVITY</h3><div id="feed"></div>`)}
+        ${coach(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`, 5)}
+      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, 6)}
     </div>`;
 
-  renderFeed(container.querySelector('#feed'), state.entries, ai);
+  renderFeed(container.querySelector('#feed'), state.entries, ai, state.users);
   initWorkoutTooltip(container.querySelector('#workouts-card'));
+  if (animate) runCountUps(container);
 
-  // Tick today's challenge; the Firestore snapshot re-render flips the card
-  // (instant with local persistence's latency compensation).
+  // Tick today's challenge: confetti fires immediately, then the Firestore
+  // snapshot re-render flips the card to the DONE stamp (instant with local
+  // persistence's latency compensation).
   container.querySelector('#challenge-done')?.addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
     btn.disabled = true;
     btn.textContent = 'SAVING…';
+    burstFrom(btn);
+    celebratePending = true;
     try {
       await saveEntry(state.currentUser.id, state.currentUser.name, todayStr(), { dailyChallenge: true });
     } catch (err) {
       console.error(err);
+      celebratePending = false;
       btn.disabled = false;
       btn.textContent = "I'VE DONE IT ✔";
     }
   });
-  import('../charts.js').then(m => m.drawCharts(state)).catch(() => {});
+  import('../charts.js').then(m => m.drawCharts(state, { animate })).catch(() => {});
 }

@@ -2,17 +2,20 @@ import { loginAs, signup } from '../state.js';
 import { esc, safeColor } from '../lib/esc.js';
 
 export function renderRoster(container, users, onLoggedIn) {
-  const names = users.map(u => `
-    <button data-id="${esc(u.id)}" class="roster-name w-full rounded-xl bg-card border border-edge
+  const names = users.map((u, i) => `
+    <button data-id="${esc(u.id)}" class="roster-name fx-card pressable w-full rounded-xl bg-card border border-edge
       px-4 py-4 text-lg font-bold text-left active:border-accent"
-      style="border-left: 4px solid ${safeColor(u.color)}">${esc(u.name)}</button>`).join('');
+      style="--fx-i:${i + 1}; border-left: 4px solid ${safeColor(u.color)}">${esc(u.name)}</button>`).join('');
 
   container.innerHTML = `
-    <div class="flex min-h-screen flex-col justify-center gap-6 px-6 py-10 max-w-sm mx-auto">
-      <h2 class="text-2xl font-black">Who are you?</h2>
+    <div class="fx-on ember-bg flex min-h-screen flex-col justify-center gap-6 px-6 py-10 max-w-sm mx-auto">
+      <div class="fx-card" style="--fx-i:0">
+        <p class="eyebrow">Team Lift</p>
+        <h2 class="display text-3xl tracking-tight mt-1">WHO ARE YOU?</h2>
+      </div>
       <div class="flex flex-col gap-3">${names || '<p class="text-neutral-500">No members yet.</p>'}</div>
-      <button id="new-user" class="w-full rounded-xl border-2 border-dashed border-edge py-4
-        text-lg font-bold text-neutral-400 active:border-accent">+ I'm new</button>
+      <button id="new-user" class="fx-card pressable w-full rounded-xl border-2 border-dashed border-edge py-4
+        text-lg font-bold text-neutral-400 active:border-accent" style="--fx-i:${users.length + 1}">+ I'm new</button>
       <div id="roster-sub"></div>
     </div>`;
 

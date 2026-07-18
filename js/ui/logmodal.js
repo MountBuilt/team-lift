@@ -9,8 +9,9 @@ export function mountFab(onClick) {
   const fab = document.createElement('button');
   fab.id = 'fab';
   fab.textContent = '+';
-  fab.className = `fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full bg-accent text-4xl
-    font-black text-black shadow-lg shadow-accent/30 active:bg-accentDim`;
+  fab.className = `fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full text-4xl
+    font-black text-black shadow-lg shadow-accent/40`;
+  fab.setAttribute('aria-label', 'Log an entry');
   fab.addEventListener('click', onClick);
   document.body.appendChild(fab);
 }
@@ -34,12 +35,12 @@ export function openLogModal(dateStr = todayStr()) {
 
   const modal = document.createElement('div');
   modal.id = 'log-modal';
-  modal.className = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70';
+  modal.className = 'sheet-backdrop fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70';
   modal.innerHTML = `
-    <form id="log-form" class="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-edge
+    <form id="log-form" class="sheet w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-card border border-edge
       p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
       <div class="flex items-center justify-between">
-        <h3 class="text-xl font-black">LOG IT</h3>
+        <h3 class="display text-2xl tracking-wide">LOG IT</h3>
         <button type="button" id="log-close" class="text-2xl text-neutral-500 px-2">✕</button>
       </div>
       <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Date
@@ -61,7 +62,7 @@ export function openLogModal(dateStr = todayStr()) {
         <div class="flex flex-wrap gap-2">${WORKOUT_PARTS.map(chip).join('')}</div>
       </div>
       <p id="log-err" class="hidden text-sm text-red-400">Couldn't save. Check your connection and try again.</p>
-      <button id="log-save" class="rounded-xl bg-accent py-4 text-lg font-black text-black active:bg-accentDim">
+      <button id="log-save" class="pressable rounded-xl bg-accent py-4 display text-xl tracking-wide text-black active:bg-accentDim">
         SAVE</button>
     </form>`;
 
@@ -78,6 +79,11 @@ export function openLogModal(dateStr = todayStr()) {
       btn.className = btn.className.replace(
         parts.has(p) ? 'border-edge bg-card text-neutral-300' : 'border-accent bg-accent text-black',
         parts.has(p) ? 'border-accent bg-accent text-black' : 'border-edge bg-card text-neutral-300');
+      if (parts.has(p)) {
+        btn.classList.remove('chip-pop');
+        void btn.offsetWidth; // restart the pop if re-selected quickly
+        btn.classList.add('chip-pop');
+      }
     });
   });
 

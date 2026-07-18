@@ -2,17 +2,28 @@ import { entriesInWindow, weeklyWorkoutCount } from '../lib/aggregate.js';
 import { formatShort, todayStr, mondayOf } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { pushSupported, enablePush, disablePush } from '../push.js';
+import { reducedMotion } from './fx.js';
 
 let meChart = null;
 
-export function renderMe(container, state, { onEdit, onLogout }) {
+// The weekly target as three fillable slabs: the whole game is 3+ workouts.
+function targetSlabs(count, color) {
+  const slab = (i) => `
+    <span class="h-2.5 flex-1 rounded-full ${i < count ? '' : 'bg-edge'}"
+      ${i < count ? `style="background:${color}"` : ''}></span>`;
+  return `<span class="flex w-24 items-center gap-1">${[0, 1, 2].map(slab).join('')}</span>`;
+}
+
+export function renderMe(container, state, { onEdit, onLogout }, { animate = false } = {}) {
   const me = state.currentUser;
+  const color = safeColor(me.color);
   const mine = entriesInWindow(state.entries, state.challenge)
     .filter(e => e.userId === me.id)
     .sort((a, b) => a.date < b.date ? 1 : -1);
   const weights = [...mine].reverse().filter(e => typeof e.weight === 'number');
   const wkCount = weeklyWorkoutCount(state.entries, me.id, mondayOf(todayStr()));
   const pushOn = me.push?.enabled === true;
+  const hit = wkCount >= 3;
 
   const row = (e) => {
     const bits = [];
@@ -24,31 +35,36 @@ export function renderMe(container, state, { onEdit, onLogout }) {
       <button data-date="${esc(e.date)}" class="entry-row flex w-full items-baseline justify-between gap-3
         border-b border-edge/60 py-3 text-left last:border-0 active:bg-ink">
         <span class="text-sm font-bold">${e.date === todayStr() ? 'Today' : formatShort(e.date)}</span>
-        <span class="text-sm text-neutral-400 text-right">${bits.join(' · ') || '—'}</span>
+        <span class="text-sm text-neutral-400 text-right">${bits.join(' · ') || '-'}</span>
       </button>`;
   };
 
   container.innerHTML = `
-    <div class="flex flex-col gap-3 px-4 pb-28 pt-5">
-      <header class="flex items-baseline justify-between px-1">
-        <h1 class="text-2xl font-black" style="color:${safeColor(me.color)}">${esc(me.name.toUpperCase())}</h1>
-        <span class="text-sm font-bold ${wkCount >= 3 ? 'text-green-400' : 'text-neutral-500'}">
-          ${wkCount}/3 workouts this week</span>
+    <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pb-28 pt-5">
+      <header class="fx-card ember-bg px-1 pt-2" style="--fx-i:0">
+        <p class="eyebrow">This is you, champion</p>
+        <h1 class="display text-[2.6rem] leading-none tracking-tight mt-1" style="color:${color}">
+          ${esc(me.name.toUpperCase())}</h1>
+        <div class="mt-3 flex items-center justify-between">
+          <span class="text-sm font-bold ${hit ? 'text-green-400' : 'text-neutral-400'}">
+            ${hit ? 'Weekly target smashed 💪' : `${wkCount}/3 workouts this week`}</span>
+          ${targetSlabs(wkCount, hit ? '#4ade80' : color)}
+        </div>
       </header>
-      <section class="rounded-2xl bg-card border border-edge p-4">
-        <h3 class="mb-2 font-black">MY WEIGHT (KG)</h3>
+      <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:1">
+        <h3 class="mb-2 eyebrow">My weight (kg)</h3>
         <div class="relative h-48"><canvas id="me-weight-chart"></canvas></div>
-        ${weights.length === 0 ? '<p class="text-sm text-neutral-500">No weigh-ins yet.</p>' : ''}
+        ${weights.length === 0 ? '<p class="text-sm text-neutral-500">No weigh-ins yet. Front the scales, get the trend line.</p>' : ''}
       </section>
-      <section class="rounded-2xl bg-card border border-edge p-4">
-        <h3 class="mb-2 font-black">MY ENTRIES <span class="text-xs text-neutral-500 font-bold">tap to edit</span></h3>
-        ${mine.map(row).join('') || '<p class="text-sm text-neutral-500">Nothing logged yet.</p>'}
+      <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:2">
+        <h3 class="mb-2 eyebrow">My entries <span class="normal-case tracking-normal text-neutral-600">· tap to edit</span></h3>
+        ${mine.map(row).join('') || '<p class="text-sm text-neutral-500">Nothing logged yet. Hit the + and get on the board.</p>'}
       </section>
-      <section class="rounded-2xl bg-card border border-edge p-4">
-        <h3 class="mb-2 font-black">NOTIFICATIONS</h3>
+      <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:3">
+        <h3 class="mb-2 eyebrow">Notifications</h3>
         ${pushSupported() ? `
         <p class="text-sm text-neutral-400">Morning motivation plus an evening kick up the arse if you haven't logged anything.</p>
-        <button id="push-toggle" class="mt-3 w-full rounded-xl border border-edge py-3 text-sm font-black
+        <button id="push-toggle" class="pressable mt-3 w-full rounded-xl border border-edge py-3 text-sm font-black
           ${pushOn ? 'text-green-400' : 'text-neutral-400'}">
           ${pushOn ? 'NOTIFICATIONS ON' : 'TURN ON NOTIFICATIONS'}</button>`
       : '<p class="text-sm text-neutral-500">Install the app to your home screen first, then this switch turns up.</p>'}
@@ -94,7 +110,8 @@ export function renderMe(container, state, { onEdit, onLogout }) {
         }]
       },
       options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
+        responsive: true, maintainAspectRatio: false,
+        animation: animate && !reducedMotion() ? { duration: 800, easing: 'easeOutQuart' } : false,
         plugins: {
           legend: { display: false },
           tooltip: { callbacks: {

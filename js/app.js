@@ -10,20 +10,28 @@ const app = document.getElementById('app');
 let unsubscribe = null;
 let started = false;
 
+// Entrance choreography plays on a real visit (first paint of a tab, or a
+// tab switch), never on Firestore snapshot re-renders. `lastShownTab` is the
+// tab whose entrance has already played.
+let lastShownTab = null;
+
 function renderLoading() {
   app.innerHTML = `<div class="flex min-h-screen items-center justify-center">
-    <p class="animate-pulse text-neutral-500 font-bold">LOADING…</p></div>`;
+    <p class="animate-pulse display text-lg tracking-widest text-neutral-600">LOADING THE BOARD…</p></div>`;
 }
 
 function renderMain() {
   mountFab(() => openLogModal());
   setFabVisible(true);
   const tab = state.tab || 'dash';
+  const animate = tab !== lastShownTab;
+  lastShownTab = tab;
+  if (animate) window.scrollTo(0, 0);
   app.innerHTML = `
-    <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/95 backdrop-blur">
-      <button data-tab="dash" class="tab flex-1 py-4 text-sm font-black tracking-wide
+    <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/90 backdrop-blur">
+      <button data-tab="dash" class="tab flex-1 py-4 display text-sm tracking-[0.18em]
         ${tab === 'dash' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">DASHBOARD</button>
-      <button data-tab="me" class="tab flex-1 py-4 text-sm font-black tracking-wide
+      <button data-tab="me" class="tab flex-1 py-4 display text-sm tracking-[0.18em]
         ${tab === 'me' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">ME</button>
     </nav>
     <main id="view"></main>`;
@@ -35,10 +43,10 @@ function renderMain() {
   if (tab === 'me') {
     renderMe(view, state, {
       onEdit: (date) => openLogModal(date),
-      onLogout: () => { logout(); state.tab = 'dash'; route(); }
-    });
+      onLogout: () => { logout(); state.tab = 'dash'; lastShownTab = null; route(); }
+    }, { animate });
   } else {
-    renderDashboard(view, state);
+    renderDashboard(view, state, { animate });
   }
 }
 

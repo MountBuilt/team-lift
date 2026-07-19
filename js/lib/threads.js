@@ -101,12 +101,18 @@ export function pendingForThread(thread) {
 /**
  * Build the list of thread targets Aiden should answer this tick.
  * Card targets: human pending only.
- * Feed targets: human pending and/or comment-worthy entries since scanAt.
+ * Feed targets: human pending only.
+ *
+ * Pure proactive digs (comment-worthy log, no humans) are off. The feed parent
+ * line is already Aiden's public reaction; opening a solo thread under it made
+ * him re-hype the same log (and re-edits re-fired because updatedAt > scanAt).
+ * When humans banter, attach any comment-worthy entry as context for the reply.
  */
 export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) {
   const monday = mondayOf(today);
   const jobs = [];
   const tmap = threads || {};
+  const entryById = new Map((entries || []).filter(e => e?.id).map(e => [e.id, e]));
 
   for (const key of CARD_TARGETS) {
     const pending = pendingForThread(tmap[key]);
@@ -122,12 +128,11 @@ export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) 
   }
 
   const feedIdSet = new Set(feedIds || []);
-  // Proactive "comment-worthy" jobs need a scan watermark. Without one (first
-  // deploy / missing threadScanAt), every big-effort entry in the window would
-  // fire at once and overwhelm the copywriter tick.
+  // Context only: recent comment-worthy entries (for human-led feed replies).
+  // scanAt still gates "recent" so we do not re-attach every historic big log.
   const worthyByEntry = new Map();
   if (scanAt) {
-    for (const e of entries) {
+    for (const e of entries || []) {
       if (!e?.id || !e.date) continue;
       if (e.date < addDays(today, -FEED_THREAD_MAX_AGE_DAYS)) continue;
       const updated = typeof e.updatedAt === 'number'
@@ -139,20 +144,20 @@ export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) 
     }
   }
 
-  const feedTargets = new Set([
-    ...Object.keys(tmap).filter(k => !CARD_TARGETS.includes(k)),
-    ...worthyByEntry.keys()
-  ]);
-
-  for (const target of feedTargets) {
-    if (feedIds && !feedIdSet.has(target) && !worthyByEntry.has(target)) {
+  // Existing feed threads only (humans create them). No auto-open from worthy.
+  for (const target of Object.keys(tmap).filter(k => !CARD_TARGETS.includes(k))) {
+    if (feedIds && feedIdSet.size > 0 && !feedIdSet.has(target)) {
       // Still allow pending human work on a thread even if momentarily off feed set
       const pendingOnly = pendingForThread(tmap[target]);
       if (!pendingOnly.hasWork) continue;
     }
     const pending = pendingForThread(tmap[target]);
-    const worthy = worthyByEntry.has(target) ? [worthyByEntry.get(target)] : [];
-    if (!pending.hasWork && worthy.length === 0) continue;
+    if (!pending.hasWork) continue;
+    const worthy = worthyByEntry.has(target)
+      ? [worthyByEntry.get(target)]
+      : (entryById.has(target) && isCommentWorthy(entryById.get(target), entries, monday)
+        ? [entryById.get(target)]
+        : []);
     jobs.push({
       target,
       kind: 'feed',

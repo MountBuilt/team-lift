@@ -155,7 +155,50 @@ describe('digest / wipe / purge / apply', () => {
 });
 
 describe('collectThreadJobs', () => {
-  it('opens feed job for comment-worthy entry since scanAt', () => {
+  it('does not open pure proactive feed jobs (feed parent is already Aiden)', () => {
+    // Live bug: re-edited comment-worthy log re-fired Aiden under his own
+    // feed line with no humans (Dan 2026-07-18).
+    const entries = [{
+      id: 'u_2026-07-18',
+      userId: 'u',
+      name: 'Dan',
+      date: '2026-07-18',
+      steps: 16000,
+      updatedAt: '2026-07-19T04:00:00.000Z'
+    }];
+    const jobs = collectThreadJobs({
+      threads: {},
+      entries,
+      today: '2026-07-19',
+      scanAt: '2026-07-19T03:00:00.000Z',
+      feedIds: ['u_2026-07-18']
+    });
+    assert.equal(jobs.length, 0);
+  });
+  it('does not re-hype after Aiden already spoke, even if entry re-updated', () => {
+    const entries = [{
+      id: 'u_2026-07-18',
+      userId: 'u',
+      name: 'Dan',
+      date: '2026-07-18',
+      steps: 16000,
+      updatedAt: '2026-07-19T08:00:00.000Z'
+    }];
+    const jobs = collectThreadJobs({
+      threads: {
+        'u_2026-07-18': {
+          lastAidenAt: '2026-07-19T05:00:00.000Z',
+          messages: [{ id: 'a1', kind: 'aiden', name: 'Aiden', text: 'Unit.', at: '2026-07-19T05:00:00.000Z' }]
+        }
+      },
+      entries,
+      today: '2026-07-19',
+      scanAt: '2026-07-19T04:00:00.000Z',
+      feedIds: ['u_2026-07-18']
+    });
+    assert.equal(jobs.length, 0);
+  });
+  it('opens feed job when humans pending and attaches worthy context', () => {
     const entries = [{
       id: 'u_2026-07-19',
       userId: 'u',
@@ -165,7 +208,12 @@ describe('collectThreadJobs', () => {
       updatedAt: '2026-07-19T08:00:00.000Z'
     }];
     const jobs = collectThreadJobs({
-      threads: {},
+      threads: {
+        'u_2026-07-19': {
+          lastAidenAt: null,
+          messages: [{ id: '1', kind: 'user', name: 'Simon', text: 'beast', at: '2026-07-19T09:00:00.000Z' }]
+        }
+      },
       entries,
       today: '2026-07-19',
       scanAt: '2026-07-19T07:00:00.000Z',
@@ -173,25 +221,8 @@ describe('collectThreadJobs', () => {
     });
     assert.equal(jobs.length, 1);
     assert.equal(jobs[0].target, 'u_2026-07-19');
+    assert.equal(jobs[0].newUser.length, 1);
     assert.equal(jobs[0].worthy.length, 1);
-  });
-  it('skips proactive worthy jobs when scanAt is missing (avoid first-run flood)', () => {
-    const entries = [{
-      id: 'u_2026-07-19',
-      userId: 'u',
-      name: 'Dan',
-      date: '2026-07-19',
-      steps: 16000,
-      updatedAt: '2026-07-19T08:00:00.000Z'
-    }];
-    const jobs = collectThreadJobs({
-      threads: {},
-      entries,
-      today: '2026-07-19',
-      scanAt: null,
-      feedIds: ['u_2026-07-19']
-    });
-    assert.equal(jobs.length, 0);
   });
   it('card jobs only when humans pending', () => {
     const jobs = collectThreadJobs({

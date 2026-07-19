@@ -87,8 +87,9 @@ Full detail: `docs/superpowers/specs/2026-07-19-aiden-threads-design.md`.
   compose. Show **"N comments"** only when N ≥ 1 (N = all visible msgs, user+Aiden).
   No timestamps. No "waiting on Aiden".
 - **Aiden hourly:** at most **one** reply per target per tick, covering all new
-  human messages (+ delete acks). May also post on **feed** threads for
-  comment-worthy new logs (see `js/lib/threads.js`). Card threads stay human-led.
+  human messages (+ delete acks). Feed threads are **human-led** (no pure
+  proactive dig under a feed parent - that double-talked the feed line when
+  entries were re-edited). Card threads stay human-led.
 - **3am:** digest card threads → `memory[]` (keep ~14 days), wipe card threads,
   write new parents. Feed threads discarded when parent is **> 3 days** old or
   off the recent feed — no feed digest.

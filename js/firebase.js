@@ -8,8 +8,11 @@ import { firebaseConfig } from './config.js';
 const app = initializeApp(firebaseConfig);
 // IndexedDB persistence: repeat visits paint instantly from the local cache
 // (onSnapshot fires with cached data first) and live updates stream in behind.
+// experimentalAutoDetectLongPolling: fall back when QUIC/WebChannel flakes
+// (ERR_QUIC_PROTOCOL_ERROR / Listen 400) instead of looping noisy reconnects.
 const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  experimentalAutoDetectLongPolling: true
 });
 
 const millis = (ts) => (ts && typeof ts.toMillis === 'function') ? ts.toMillis() : 0;

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
   nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS,
-  hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS
+  hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS,
+  isBigEffort, effortLabel, EFFORT_LABELS
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
 
@@ -21,6 +22,26 @@ test('pickFrom is deterministic and in range', () => {
   const arr = ['a', 'b', 'c'];
   assert.equal(pickFrom(arr, 'seed-x'), pickFrom(arr, 'seed-x'));
   assert.ok(arr.includes(pickFrom(arr, 'anything')));
+});
+
+test('isBigEffort flags 15k steps, multi-part, and workout+challenge', () => {
+  assert.equal(isBigEffort({ steps: 15000 }), true);
+  assert.equal(isBigEffort({ workoutParts: ['a', 'b', 'c'] }), true);
+  assert.equal(isBigEffort({ workoutParts: ['legs'], dailyChallenge: true }), true);
+  assert.equal(isBigEffort({ workoutParts: ['legs'], steps: 2000 }), false);
+});
+
+test('effortLabel is stable and drawn from the bank', () => {
+  const entry = e('u1', '2026-07-08', { steps: 20000, id: 'u1_2026-07-08' });
+  assert.equal(effortLabel(entry), effortLabel(entry));
+  assert.ok(EFFORT_LABELS.includes(effortLabel(entry)));
+  // Different entries can land different labels (not every row "BIG EFFORT")
+  const labels = new Set(
+    Array.from({ length: 20 }, (_, i) =>
+      effortLabel({ id: `u${i}_2026-07-08`, userId: `u${i}`, date: '2026-07-08' })
+    )
+  );
+  assert.ok(labels.size > 1);
 });
 
 test('feedLine is stable for the same entry', () => {

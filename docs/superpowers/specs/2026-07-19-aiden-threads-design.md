@@ -160,32 +160,30 @@ message that covers **all pending work** since the last Aiden pass:
 
 If none of the above, Aiden stays quiet on that target.
 
-### 7.1 Comment-worthy logs (proactive)
+### 7.1 Comment-worthy logs (context only; not pure proactive)
 
-Aiden may open or add to a thread when a **new or updated entry** since the
-last tick is worth a public dig, without waiting for a human. Keep the bar
-high so the board does not spam.
+**Live correction (2026-07-19):** pure proactive digs under a feed parent are
+**off**. The feed parent line is already Aiden’s public reaction. Opening a
+solo thread under it (especially when a comment-worthy entry was **re-edited**
+and `updatedAt` cleared the scan watermark) made him re-hype the same log
+with nobody else in the thread. Feed threads are **human-led**.
 
-**Comment-worthy (v1 heuristics — pure functions, tested):**
+`isCommentWorthy` still exists (tested) and is attached as **context** when
+humans already have pending messages on that feed thread, so Aiden can nod at
+a big log while answering the crew. Heuristics:
 
 - Workout with **≥ 3 body parts**, or workout **+** daily challenge on same day.
-- Steps **≥ 15_000** (aligns with existing feed “BIG EFFORT” idea).
+- Steps **≥ 15_000** (aligns with feed effort badges).
 - First weigh-in of the challenge window for that user (trend start).
 - Weekly target crossed: user reaches **3rd workout day this Mon–Sun** on this write.
 
 **Not comment-worthy alone:** tiny step days, stretch-only, challenge tick with
 nothing else, routine single-part sessions.
 
-**Target of proactive post:**
+Card threads stay human-led plus Aiden replies to humans.
 
-- Prefer the **feed thread** for that entry id (activity is the subject).
-- Optionally also mention standings in the **workouts** card thread only if
-  the event is workout-shaped and the card thread already has N ≥ 1 (avoid
-  cold-starting card threads with pure system noise). **v1 default:** proactive
-  only on **feed** targets for the entry; card threads stay human-led plus
-  Aiden replies to humans.
-
-(If product later wants unprompted card monologues, flip one flag — not v1.)
+(If product later wants unprompted feed monologues again, gate them so Aiden
+never re-posts after `lastAidenAt` / existing aiden messages on that target.)
 
 ### 7.2 Batching
 

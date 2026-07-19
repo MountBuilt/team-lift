@@ -44,8 +44,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: #737373;
 }
 
-/* Coach's call: how banter lines land on a card. Also the tappable Aiden
-   parent for threads (js/ui/thread.js). */
+/* Coach's call: banter lines on dashboard cards (italic). */
 .coach {
   margin-top: 0.75rem;
   padding: 0.4rem 0 0.4rem 0.75rem;
@@ -53,6 +52,21 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   font-size: 0.8rem;
   font-style: italic;
   line-height: 1.5;
+  color: #a3a3a3;
+}
+
+/* Recent activity: name + opening sentence on one roman line (not italic). */
+.feed-parent {
+  margin-top: 0;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 3px solid var(--ember);
+  font-size: 0.875rem;
+  font-style: normal;
+  line-height: 1.5;
+  color: #d4d4d4;
+}
+.feed-parent .feed-line-text {
+  font-weight: 400;
   color: #a3a3a3;
 }
 
@@ -241,11 +255,9 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   animation: heat-shimmer 3.2s linear infinite;
 }
 
-/* Big-effort feed rows get an ember edge. */
-.big-effort {
-  border-left: 3px solid var(--ember);
-  background: linear-gradient(90deg, rgba(249, 115, 22, 0.08), transparent 65%);
-}
+/* Big-effort feed rows used to get an ember left bar; dropped because coach
+   parent lines already use that edge for every banter/thread parent. Badge
+   text alone marks the moment (see effortLabel in js/lib/banter.js). */
 
 /* ---- Log modal: sheet slides up, backdrop fades. ---- */
 .sheet-backdrop { animation: fade-in 0.25s ease both; }

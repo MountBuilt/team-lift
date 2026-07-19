@@ -1,17 +1,8 @@
 import { groupFeedByDay } from '../lib/aggregate.js';
-import { feedLine } from '../lib/banter.js';
+import { feedLine, effortLabel, isBigEffort } from '../lib/banter.js';
 import { todayStr } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
-
-// An entry that deserves its moment in lights: a monster step day, a big
-// multi-part session, or a workout with the daily challenge knocked over too.
-function isBigEffort(e) {
-  const parts = Array.isArray(e.workoutParts) ? e.workoutParts.length : 0;
-  return (typeof e.steps === 'number' && e.steps >= 15000)
-    || parts >= 3
-    || (parts > 0 && e.dailyChallenge === true);
-}
 
 // `ai` is a fresh config/banter doc or null; ai.feed maps entry ids
 // (`userId_date`) to AI-written lines, template feedLine covers the rest.
@@ -28,18 +19,19 @@ export function renderFeed(container, entries, ai = null, users = [], banter = n
     const color = colorOf(e);
     const big = isBigEffort(e);
     const line = ai?.feed?.[e.id] ?? feedLine(e);
-    // Thread target = entry id. Parent text is Aiden's (or template) feed banter.
-    const banterParent = threadBlockHtml(e.id, esc(line), banter || ai);
+    // Name + banter on one line (no separate name row / no italics).
+    const badge = big
+      ? `<span class="ml-1 rounded bg-accent/15 px-1.5 py-0.5 align-middle text-[10px] font-black tracking-wider text-accent">${esc(effortLabel(e))}</span>`
+      : '';
+    const parentHtml =
+      `<span class="font-bold" style="color:${color}">${esc(e.name)}</span>${badge} ` +
+      `<span class="feed-line-text">${esc(line)}</span>`;
+    const banterParent = threadBlockHtml(e.id, parentHtml, banter || ai, { parentClass: 'feed-parent' });
     return `
-      <div class="flex items-start gap-3 py-2.5 border-b border-edge/60 last:border-0
-        ${big ? 'big-effort -mx-2 rounded-r-lg px-2' : ''}">
+      <div class="flex items-start gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full display text-xs"
           style="background:${color}26;color:${color}">${esc(e.name.charAt(0).toUpperCase())}</span>
         <div class="min-w-0 flex-1">
-          <p class="text-sm leading-relaxed">
-            <span class="font-bold" style="color:${color}">${esc(e.name)}</span>
-            ${big ? '<span class="ml-1 rounded bg-accent/15 px-1.5 py-0.5 align-middle text-[10px] font-black tracking-wider text-accent">BIG EFFORT</span>' : ''}
-          </p>
           ${banterParent}
         </div>
       </div>`;

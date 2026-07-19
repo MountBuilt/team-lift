@@ -2,7 +2,7 @@
 // assets so opens are near-instant. After a deploy, a user's first open may
 // serve the previous version; the refreshed copy lands on the next open.
 // Firestore/live data (anything on *.googleapis.com) is never intercepted.
-const CACHE = 'teamlift-v3'; // Aiden threads + daily card freeze UI
+const CACHE = 'teamlift-v5'; // feed name+line inline; my entries this week only
 
 self.addEventListener('install', () => self.skipWaiting());
 

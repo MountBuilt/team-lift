@@ -22,8 +22,12 @@ function allThreads(banter) {
   return { ...(banter?.threads || {}) };
 }
 
-/** Coach / feed parent line + optional comment count + expandable thread. */
-export function threadBlockHtml(target, parentHtml, banter) {
+/**
+ * Tappable parent + optional comment count + expandable thread.
+ * @param {string} [opts.parentClass='coach'] - `coach` (card italics) or
+ *   `feed-parent` (recent activity: roman, name+line inline).
+ */
+export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach' } = {}) {
   const n = commentCount(threadOf(banter, target));
   const count = n > 0
     ? `<button type="button" class="thread-count" data-thread-target="${esc(target)}"
@@ -31,7 +35,7 @@ export function threadBlockHtml(target, parentHtml, banter) {
     : '';
   return `
     <div class="thread-wrap" data-thread-root="${esc(target)}">
-      <div class="thread-parent coach" data-thread-target="${esc(target)}" role="button" tabindex="0">
+      <div class="thread-parent ${parentClass}" data-thread-target="${esc(target)}" role="button" tabindex="0">
         ${parentHtml}
       </div>
       ${count}

@@ -1,5 +1,5 @@
 import { entriesInWindow, weeklyWorkoutCount } from '../lib/aggregate.js';
-import { formatShort, todayStr, mondayOf } from '../lib/dates.js';
+import { formatShort, todayStr, mondayOf, addDays } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { pushSupported, enablePush, disablePush } from '../push.js';
 import { reducedMotion } from './fx.js';
@@ -17,11 +17,16 @@ function targetSlabs(count, color) {
 export function renderMe(container, state, { onEdit, onLogout }, { animate = false } = {}) {
   const me = state.currentUser;
   const color = safeColor(me.color);
-  const mine = entriesInWindow(state.entries, state.challenge)
+  const today = todayStr();
+  const monday = mondayOf(today);
+  const weekEnd = addDays(monday, 6);
+  // Weight chart: full challenge window. Entry list: this Mon–Sun only.
+  const allMine = entriesInWindow(state.entries, state.challenge)
     .filter(e => e.userId === me.id)
     .sort((a, b) => a.date < b.date ? 1 : -1);
-  const weights = [...mine].reverse().filter(e => typeof e.weight === 'number');
-  const wkCount = weeklyWorkoutCount(state.entries, me.id, mondayOf(todayStr()));
+  const mine = allMine.filter(e => e.date >= monday && e.date <= weekEnd);
+  const weights = [...allMine].reverse().filter(e => typeof e.weight === 'number');
+  const wkCount = weeklyWorkoutCount(state.entries, me.id, monday);
   const pushOn = me.push?.enabled === true;
   const hit = wkCount >= 3;
 
@@ -57,8 +62,8 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
         ${weights.length === 0 ? '<p class="text-sm text-neutral-500">No weigh-ins yet. Front the scales, get the trend line.</p>' : ''}
       </section>
       <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:2">
-        <h3 class="mb-2 eyebrow">My entries <span class="normal-case tracking-normal text-neutral-600">· tap to edit</span></h3>
-        ${mine.map(row).join('') || '<p class="text-sm text-neutral-500">Nothing logged yet. Hit the + and get on the board.</p>'}
+        <h3 class="mb-2 eyebrow">My entries <span class="normal-case tracking-normal text-neutral-600">· this week · tap to edit</span></h3>
+        ${mine.map(row).join('') || '<p class="text-sm text-neutral-500">Nothing this week yet. Hit the + and get on the board.</p>'}
       </section>
       <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:3">
         <h3 class="mb-2 eyebrow">Notifications</h3>

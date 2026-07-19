@@ -13,6 +13,37 @@ export function pickFrom(arr, seed) {
   return arr[hashStr(String(seed)) % arr.length];
 }
 
+// Feed badge for monster days. Deterministic per entry so it stays stable
+// across re-renders; vary the wording so "BIG EFFORT" is not every row.
+export const EFFORT_LABELS = [
+  'BIG EFFORT',
+  'HUGE',
+  'MASSIVE',
+  'UNIT',
+  'LEGEND',
+  'WEAPON',
+  'ANIMAL',
+  'KING SLAYER',
+  'BEAST',
+  'MACHINE',
+  'ABSOLUTE UNIT'
+];
+
+/** Monster step day, multi-part session, or workout + challenge same day. */
+export function isBigEffort(entry) {
+  if (!entry) return false;
+  const parts = Array.isArray(entry.workoutParts) ? entry.workoutParts.length : 0;
+  return (typeof entry.steps === 'number' && entry.steps >= 15000)
+    || parts >= 3
+    || (parts > 0 && entry.dailyChallenge === true);
+}
+
+/** Stable badge text for a big-effort feed row. */
+export function effortLabel(entry) {
+  const seed = `${entry?.id || entry?.userId || ''}|${entry?.date || ''}|effort`;
+  return pickFrom(EFFORT_LABELS, seed);
+}
+
 // AI-written banter from config/banter beats the template pool while it's
 // fresh (written today or yesterday); after that the templates take over so
 // a dead cron job never leaves week-old quips on the board.

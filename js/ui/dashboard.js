@@ -17,6 +17,9 @@ let celebratePending = false;
 const card = (inner, i, extra = '') =>
   `<section class="fx-card rounded-2xl bg-card border border-edge p-4 ${extra}" style="--fx-i:${i}">${inner}</section>`;
 
+// Plain coach line (daily challenge quip — not threaded).
+const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
+
 // Aiden parent under a card: tappable thread (see js/ui/thread.js). No separate Reply.
 const coachThread = (target, comment, banter) =>
   comment ? threadBlockHtml(target, esc(comment), banter) : '';

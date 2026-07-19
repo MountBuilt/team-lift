@@ -131,7 +131,8 @@ export function validateCopy(copy, context) {
 
   for (const [k, v] of Object.entries(cards)) {
     if (!context.sections.includes(k)) errors.push(`card "${k}" was not a requested section`);
-    if (typeof v !== 'string' || !v.trim() || v.length > 200) errors.push(`card "${k}" empty or over 200 chars`);
+    if (typeof v !== 'string' || !v.trim()) errors.push(`card "${k}" empty`);
+    else if (v.length > 200) errors.push(`card "${k}" over 200 chars (got ${v.length})`);
     else banned(v, `card "${k}"`, errors);
   }
   for (const s of context.sections) {

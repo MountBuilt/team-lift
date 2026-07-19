@@ -175,6 +175,24 @@ describe('collectThreadJobs', () => {
     assert.equal(jobs[0].target, 'u_2026-07-19');
     assert.equal(jobs[0].worthy.length, 1);
   });
+  it('skips proactive worthy jobs when scanAt is missing (avoid first-run flood)', () => {
+    const entries = [{
+      id: 'u_2026-07-19',
+      userId: 'u',
+      name: 'Dan',
+      date: '2026-07-19',
+      steps: 16000,
+      updatedAt: '2026-07-19T08:00:00.000Z'
+    }];
+    const jobs = collectThreadJobs({
+      threads: {},
+      entries,
+      today: '2026-07-19',
+      scanAt: null,
+      feedIds: ['u_2026-07-19']
+    });
+    assert.equal(jobs.length, 0);
+  });
   it('card jobs only when humans pending', () => {
     const jobs = collectThreadJobs({
       threads: {

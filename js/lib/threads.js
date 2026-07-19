@@ -122,16 +122,21 @@ export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) 
   }
 
   const feedIdSet = new Set(feedIds || []);
+  // Proactive "comment-worthy" jobs need a scan watermark. Without one (first
+  // deploy / missing threadScanAt), every big-effort entry in the window would
+  // fire at once and overwhelm the copywriter tick.
   const worthyByEntry = new Map();
-  for (const e of entries) {
-    if (!e?.id || !e.date) continue;
-    if (e.date < addDays(today, -FEED_THREAD_MAX_AGE_DAYS)) continue;
-    const updated = typeof e.updatedAt === 'number'
-      ? new Date(e.updatedAt).toISOString()
-      : (e.updatedAt || '');
-    if (scanAt && updated && updated <= scanAt) continue;
-    if (!isCommentWorthy(e, entries, monday)) continue;
-    worthyByEntry.set(e.id, e);
+  if (scanAt) {
+    for (const e of entries) {
+      if (!e?.id || !e.date) continue;
+      if (e.date < addDays(today, -FEED_THREAD_MAX_AGE_DAYS)) continue;
+      const updated = typeof e.updatedAt === 'number'
+        ? new Date(e.updatedAt).toISOString()
+        : (e.updatedAt || '');
+      if (updated && updated <= scanAt) continue;
+      if (!isCommentWorthy(e, entries, monday)) continue;
+      worthyByEntry.set(e.id, e);
+    }
   }
 
   const feedTargets = new Set([

@@ -64,3 +64,10 @@ export async function saveEntry(userId, userName, date, fields) {
 export async function updateUserPush(userId, push) {
   await setDoc(doc(db, 'users', userId), { push }, { mergeFields: ['push'] });
 }
+
+// Aiden threads live on config/banter.threads (see js/lib/threads.js + CLAUDE.md).
+// Full-map replace of `threads` — callers pass the complete map from live state
+// after a local append/delete (acceptable race for a small trusted group).
+export async function writeBanterThreads(threads) {
+  await setDoc(doc(db, 'config', 'banter'), { threads }, { mergeFields: ['threads'] });
+}

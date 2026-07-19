@@ -8,6 +8,7 @@ import { saveEntry } from '../firebase.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { runCountUps, burstFrom, compactNumber } from './fx.js';
+import { threadBlockHtml, bindThreads } from './thread.js';
 
 // One-shot celebration: set when the user ticks the challenge, consumed by
 // the next render so the DONE stamp slams in exactly once.
@@ -16,8 +17,9 @@ let celebratePending = false;
 const card = (inner, i, extra = '') =>
   `<section class="fx-card rounded-2xl bg-card border border-edge p-4 ${extra}" style="--fx-i:${i}">${inner}</section>`;
 
-// Daily-rotating banter under a card, styled as the coach's call.
-const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
+// Aiden parent under a card: tappable thread (see js/ui/thread.js). No separate Reply.
+const coachThread = (target, comment, banter) =>
+  comment ? threadBlockHtml(target, esc(comment), banter) : '';
 
 function headerHtml(c, today) {
   const wk = weekNumber(today, c.startDate);
@@ -221,19 +223,20 @@ export function renderDashboard(container, state, { animate = false } = {}) {
       ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
         <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>
-        ${coach(ai?.cards?.weight ?? weightComment(state.entries, state.users, today))}`, 3)}
+        ${coachThread('weight', ai?.cards?.weight ?? weightComment(state.entries, state.users, today), state.banter)}`, 3)}
       <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:4">
         ${workoutsPanel(state, monday) +
-          coach(ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today))}
+          coachThread('workouts', ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today), state.banter)}
       </section>
       ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
         <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>
-        ${coach(ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today))}`, 5)}
+        ${coachThread('steps', ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today), state.banter)}`, 5)}
       ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, 6)}
     </div>`;
 
-  renderFeed(container.querySelector('#feed'), state.entries, ai, state.users);
+  renderFeed(container.querySelector('#feed'), state.entries, ai, state.users, state.banter);
+  bindThreads(container, state.banter);
   initWorkoutTooltip(container.querySelector('#workouts-card'));
   if (animate) runCountUps(container);
 

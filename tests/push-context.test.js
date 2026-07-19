@@ -79,6 +79,37 @@ test('validateCopy accepts a complete, clean copy', () => {
   assert.deepEqual(validateCopy(copy, ctx), { ok: true, errors: [] });
 });
 
+test('buildContext: thisWeek standings and empty threadWork by default', () => {
+  const ctx = buildContext(base);
+  assert.ok(ctx.thisWeek && Array.isArray(ctx.thisWeek.members));
+  assert.equal(ctx.botName, 'Aiden');
+  assert.deepEqual(ctx.threadWork, []);
+});
+
+test('validateCopy requires threadReplies for each threadWork target', () => {
+  const ctx = buildContext({
+    ...base,
+    changed: [],
+    morning: [],
+    threadJobs: [{
+      target: 'workouts',
+      kind: 'card',
+      newUser: [{ id: 'm1', kind: 'user', name: 'Simon', text: 'oi', at: 't' }],
+      deletesToAck: [],
+      worthy: []
+    }]
+  });
+  assert.equal(ctx.threadWork.length, 1);
+  const bad = validateCopy({ cards: {}, feed: {}, pushes: [], threadReplies: {} }, ctx);
+  assert.equal(bad.ok, false);
+  assert.ok(bad.errors.some(e => e.includes('missing threadReply')));
+  const good = validateCopy({
+    cards: {}, feed: {}, pushes: [],
+    threadReplies: { workouts: 'Fair call Simon, this week is the board that matters.' }
+  }, ctx);
+  assert.deepEqual(good, { ok: true, errors: [] });
+});
+
 test('validateCopy rejects em-dashes, gym, missing pushes, unknown ids, missing cards', () => {
   const ctx = buildContext({ ...base, changed: ['weight', 'feed'] });
   const bad = {

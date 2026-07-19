@@ -1,8 +1,13 @@
 // Builds the context file the copywriter skill reads, and validates the copy
 // it returns. Pure: no network, no clock.
+//
+// Aiden threads (2026-07-19): see docs/superpowers/specs/2026-07-19-aiden-threads-design.md
+// and js/lib/threads.js. Card parents only on daily refresh; threadReplies for
+// hourly banter-back.
 import { dailyChallenge, challengeStreak } from '../../js/lib/challenge.js';
 import { addDays } from '../../js/lib/dates.js';
 import { restDayStatus } from '../../js/lib/banter.js';
+import { thisWeekStandings, AIDEN_MSG_MAX, CARD_TARGETS } from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
 const entryView = (e) => {
@@ -14,12 +19,32 @@ const entryView = (e) => {
   return out;
 };
 
-export function buildContext({ users, entries, banter, challengeStart, changed, morning, evening, today }) {
+const msgView = (m) => ({
+  id: m.id,
+  kind: m.kind,
+  name: m.name ?? (m.kind === 'aiden' ? 'Aiden' : ''),
+  text: m.text,
+  at: m.at,
+  ...(m.deleted ? { deleted: true } : {}),
+  ...(m.userId ? { userId: m.userId } : {})
+});
+
+/**
+ * @param {object} opts
+ * @param {string[]} opts.changed - sections to rewrite: weight|steps|workouts|feed
+ * @param {object[]} [opts.threadJobs] - from collectThreadJobs
+ * @param {boolean} [opts.dailyCardRefresh]
+ */
+export function buildContext({
+  users, entries, banter, challengeStart, changed, morning, evening, today,
+  threadJobs = [], dailyCardRefresh = false
+}) {
   const challenge = dailyChallenge(today, challengeStart);
   const feedStart = addDays(today, -6);
   const recentStart = addDays(today, -13);
   const feed = banter?.feed ?? {};
   const feedMeta = banter?.feedMeta ?? {};
+  const threads = banter?.threads ?? {};
 
   const feedNeeds = !changed.includes('feed') ? [] : entries
     .filter(e => e.date && e.date >= feedStart)
@@ -28,18 +53,15 @@ export function buildContext({ users, entries, banter, challengeStart, changed, 
     .map(e => ({ entryId: e.id, ...entryView(e) }));
 
   const pushFor = (kind) => (u) => {
-    // Same-day grace baked into the data: emptyDays counts only COMPLETED
-    // empty days (today is never counted), so morning copy calls out a real
-    // layoff and evening copy can never roast a bloke for "today" being blank.
     const rest = restDayStatus(entries, u.id, today);
     return {
       kind,
       userId: u.id,
       name: u.name,
       streak: challengeStreak(entries, u.id, today),
-      emptyDays: rest.emptyDays,   // consecutive empty completed days, today graced
-      resting: rest.resting,       // 1-2 empty days = legit rest, ease off
-      fairGame: rest.fairGame,     // 3+ empty days = pile on
+      emptyDays: rest.emptyDays,
+      resting: rest.resting,
+      fairGame: rest.fairGame,
       recentDays: entries
         .filter(e => e.userId === u.id && e.date >= recentStart)
         .sort((a, b) => (a.date < b.date ? -1 : 1))
@@ -47,11 +69,35 @@ export function buildContext({ users, entries, banter, challengeStart, changed, 
     };
   };
 
+  const thisWeek = thisWeekStandings(entries, users, today);
+
+  // Compact jobs for the copywriter: one reply string per target required.
+  const threadWork = threadJobs.map(job => {
+    const parent = CARD_TARGETS.includes(job.target)
+      ? (banter?.cards?.[job.target] ?? null)
+      : (feed[job.target] ?? null);
+    const thread = threads[job.target];
+    return {
+      target: job.target,
+      kind: job.kind,
+      parent,
+      messages: (thread?.messages || []).filter(m => m.deleted !== true).map(msgView),
+      newUserMessages: job.newUser.map(msgView),
+      deletesToAck: job.deletesToAck.map(m => ({
+        id: m.id, name: m.name, note: 'user deleted this after you answered; acknowledge briefly, do not quote it'
+      })),
+      commentWorthy: job.worthy.map(entryView)
+    };
+  });
+
   return {
     today,
+    botName: 'Aiden',
+    dailyCardRefresh,
     challenge,
-    // Grace rules the copywriter must honour, restated in the data so they are
-    // impossible to miss (full guidance in the copywriter SKILL.md).
+    // Precomputed Mon–Sun standings. Card parents MUST use these for session
+    // counts — never invent all-time totals from the raw entries dump.
+    thisWeek,
     grace: {
       sameDay: 'Today is never a missed, lazy, skipped or rest day. Only roast inactivity on completed days (yesterday and earlier). The evening push is pure encouragement, never a roast for not logging today.',
       restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.'
@@ -59,14 +105,14 @@ export function buildContext({ users, entries, banter, challengeStart, changed, 
     users: users.map(u => ({ id: u.id, name: u.name })),
     entries: entries.map(entryView),
     sections: [...changed],
-    // Active topical storylines to weave in where they fit and are funny. They
-    // expire on their own; an empty array means run general banter.
     storylines: activeStorylines(STORYLINES, today)
       .map(s => ({ id: s.id, subject: s.subject, until: s.until, note: s.note })),
     currentCards: banter?.cards ?? {},
     history: banter?.history ?? [],
+    memory: banter?.memory ?? [],
     feedNeeds,
     currentFeed: feed,
+    threadWork,
     pushes: [...morning.map(pushFor('morning')), ...evening.map(pushFor('evening'))]
   };
 }
@@ -81,14 +127,13 @@ export function validateCopy(copy, context) {
   const cards = copy?.cards ?? {};
   const feed = copy?.feed ?? {};
   const pushes = Array.isArray(copy?.pushes) ? copy.pushes : [];
+  const threadReplies = copy?.threadReplies ?? {};
 
   for (const [k, v] of Object.entries(cards)) {
     if (!context.sections.includes(k)) errors.push(`card "${k}" was not a requested section`);
     if (typeof v !== 'string' || !v.trim() || v.length > 200) errors.push(`card "${k}" empty or over 200 chars`);
     else banned(v, `card "${k}"`, errors);
   }
-  // Every requested card section must come back, or the stale card would
-  // survive while its hash advances and it never regenerates.
   for (const s of context.sections) {
     if (s !== 'feed' && !(s in cards)) errors.push(`missing card for section "${s}"`);
   }
@@ -116,6 +161,17 @@ export function validateCopy(copy, context) {
   }
   for (const key of wanted.keys()) {
     if (!got.has(key)) errors.push(`missing push ${key}`);
+  }
+
+  const wantedTargets = new Set((context.threadWork || []).map(t => t.target));
+  for (const [target, text] of Object.entries(threadReplies)) {
+    if (!wantedTargets.has(target)) errors.push(`unrequested threadReply "${target}"`);
+    if (typeof text !== 'string' || !text.trim() || text.length > AIDEN_MSG_MAX) {
+      errors.push(`threadReply "${target}" empty or over ${AIDEN_MSG_MAX} chars`);
+    } else banned(text, `threadReply "${target}"`, errors);
+  }
+  for (const target of wantedTargets) {
+    if (!(target in threadReplies)) errors.push(`missing threadReply for "${target}"`);
   }
 
   return { ok: errors.length === 0, errors };

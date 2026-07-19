@@ -11,10 +11,15 @@ export const EVENING_AFTER = '20:30';
 const pad = (n) => String(n).padStart(2, '0');
 const hhmm = (now) => `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-// Section hashing, ported from the retired python block in
-// refresh-banter.sh: hash exactly the data each dashboard section reads, and
+// Section hashing: hash exactly the data each dashboard section reads, and
 // fold the (id, name) roster into every hash so a new member or a rename
 // invalidates all four.
+//
+// NOTE (2026-07-19 Aiden threads): the orchestrator only uses feed hash
+// mid-day to rewrite feed lines. Card parents (weight/steps/workouts) rewrite
+// solely on the ~3am cardsDay path — do not reintroduce mid-day card rewrites
+// from hash churn (caused stale "7 sessions" coach lines). See
+// docs/superpowers/specs/2026-07-19-aiden-threads-design.md and CLAUDE.md.
 export function computeHashes(users, entries, today) {
   const usersKey = users
     .map(u => [u.id, u.name ?? null])

@@ -76,7 +76,22 @@ test('validateCopy accepts a complete, clean copy', () => {
     feed: { 'u2_2026-07-10': 'clocked 10,000 on the dot. Suspiciously round, mate.' },
     pushes: [{ userId: 'u1', kind: 'morning', title: 'Oi Simon', body: `Legs yesterday, good. Today's challenge: ${ctx.challenge.reps} ${ctx.challenge.name}. Get it done.` }]
   };
-  assert.deepEqual(validateCopy(copy, ctx), { ok: true, errors: [] });
+  assert.deepEqual(validateCopy(copy, ctx), { ok: true, errors: [], missingFeed: [] });
+});
+
+test('validateCopy allows partial feed (missing lines listed, not fatal)', () => {
+  // Wake ticks that nail cards/pushes must not throw the whole job away when
+  // Claude skips one re-edited feed entry - daily card cycle depends on this.
+  const ctx = buildContext(base);
+  const copy = {
+    cards: {},
+    feed: {},
+    pushes: [{ userId: 'u1', kind: 'morning', title: 'Oi Simon', body: 'Get the challenge done before smoko.' }]
+  };
+  const res = validateCopy(copy, ctx);
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.errors, []);
+  assert.deepEqual(res.missingFeed, ['u2_2026-07-10']);
 });
 
 test('buildContext: thisWeek standings and empty threadWork by default', () => {
@@ -107,7 +122,7 @@ test('validateCopy requires threadReplies for each threadWork target', () => {
     cards: {}, feed: {}, pushes: [],
     threadReplies: { workouts: 'Fair call Simon, this week is the board that matters.' }
   }, ctx);
-  assert.deepEqual(good, { ok: true, errors: [] });
+  assert.deepEqual(good, { ok: true, errors: [], missingFeed: [] });
 });
 
 test('validateCopy rejects em-dashes, gym, missing pushes, unknown ids, missing cards', () => {

@@ -122,8 +122,16 @@ const banned = (text, where, errors) => {
   if (/\bgym\b/i.test(text)) errors.push(`"gym" in ${where} (say workout)`);
 };
 
+/**
+ * Validate copywriter output.
+ * Missing feed lines are listed in `missingFeed` but do NOT fail the whole
+ * payload - a wake tick that nails cards + pushes must not be thrown away
+ * because one re-edited entry was skipped. The orchestrator leaves hashes.feed
+ * unadvanced so the next tick re-requests those lines.
+ */
 export function validateCopy(copy, context) {
   const errors = [];
+  const missingFeed = [];
   const cards = copy?.cards ?? {};
   const feed = copy?.feed ?? {};
   const pushes = Array.isArray(copy?.pushes) ? copy.pushes : [];
@@ -146,7 +154,7 @@ export function validateCopy(copy, context) {
     else banned(line, `feed line "${id}"`, errors);
   }
   for (const id of neededIds) {
-    if (!(id in feed)) errors.push(`missing feed line for "${id}"`);
+    if (!(id in feed)) missingFeed.push(id);
   }
 
   const wanted = new Map(context.pushes.map(p => [`${p.userId}|${p.kind}`, p]));
@@ -175,5 +183,5 @@ export function validateCopy(copy, context) {
     if (!(target in threadReplies)) errors.push(`missing threadReply for "${target}"`);
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, errors, missingFeed };
 }

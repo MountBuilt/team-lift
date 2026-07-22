@@ -180,18 +180,26 @@ async function main() {
     writeFileSync(join(workdir, 'context.json'), JSON.stringify(context, null, 2));
     log(`invoking claude (sonnet) for sections=[${sections.join(',')}] ` +
         `threads=${threadJobs.map(j => j.target).join(',')} pushes=${context.pushes.length}`);
+    // Wake ticks can pile daily cards + feed + threads + morning pushes into
+    // one Claude job. 30 turns was too tight once the copywriter skill grew
+    // (locker-room bank) and the model spent turns re-reading context.
     execFileSync('claude', [
       '-p', `/copywriter ${workdir}`,
       '--model', 'sonnet',
       '--allowedTools', 'Read', 'Write',
-      '--max-turns', '30'
-    ], { cwd: REPO, stdio: 'inherit' });
+      '--max-turns', '60'
+    ], { cwd: REPO, stdio: 'inherit', timeout: 600_000 });
     copy = JSON.parse(readFileSync(join(workdir, 'copy.json'), 'utf8'));
     const verdict = validateCopy(copy, context);
     if (!verdict.ok) {
       console.error('copy rejected:\n  ' + verdict.errors.join('\n  '));
       process.exit(1);
     }
+    if (verdict.missingFeed?.length) {
+      log(`partial feed: missing ${verdict.missingFeed.join(',')} - leaving hashes.feed stale for next tick`);
+    }
+    // Stash so the apply step can leave feed hash unadvanced when incomplete.
+    copy.__missingFeed = verdict.missingFeed || [];
   } finally {
     rmSync(workdir, { recursive: true, force: true });
   }
@@ -201,10 +209,18 @@ async function main() {
     threads = applyThreadReplies(threads, copy.threadReplies, nowIso);
   }
 
+  const missingFeed = copy.__missingFeed || [];
+  const feedComplete = missingFeed.length === 0;
+  // If Claude skipped any feedNeeds lines, do not advance hashes.feed or the
+  // next tick thinks feed is done and those lines never regenerate.
+  const hashesToWrite = feedComplete
+    ? hashes
+    : { ...hashes, feed: banter?.hashes?.feed ?? '' };
+
   const obj = {
     date: today,
     threadScanAt: nowIso,
-    hashes,
+    hashes: hashesToWrite,
     threads,
     memory
   };
@@ -238,7 +254,8 @@ async function main() {
   }
 
   await patch('config/banter', obj, paths);
-  log(`banter updated: cards=[${cardSections.join(',')}] feedLines=${feedIdsWritten.length} ` +
+  log(`banter updated: cards=[${cardSections.join(',')}] feedLines=${feedIdsWritten.length}` +
+      `${missingFeed.length ? ` (incomplete, ${missingFeed.length} pending)` : ''} ` +
       `threadReplies=${Object.keys(copy.threadReplies || {}).length}`);
 
   const copyFor = (u, kind) => copy.pushes.find(p => p.userId === u.id && p.kind === kind);

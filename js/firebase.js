@@ -1,7 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp
+  collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp, FieldPath, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './config.js';
 
@@ -62,6 +62,22 @@ export async function saveEntry(userId, userName, date, fields) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { mergeFields: ['userId', 'name', 'date', 'updatedAt', 'createdAt', ...Object.keys(fields)] });
+  // Wake the tick so Aiden reacts to a big log within a minute or so instead of
+  // on the next hour. Best-effort: a failure here just means the normal
+  // stale-scan sweep picks it up (see scripts/lib/decide.mjs).
+  pokeAiden().catch(() => {});
+}
+
+/**
+ * Stamp `config/banter.pendingAt`. The orchestrator's cheap probe compares it
+ * against `threadScanAt` to decide whether a tick needs to fetch anything at
+ * all, which is what lets the job run every 60s for ~2 document reads when
+ * idle. See scripts/lib/decide.mjs probeWork().
+ */
+export async function pokeAiden() {
+  await setDoc(doc(db, 'config', 'banter'),
+    { pendingAt: new Date().toISOString() },
+    { mergeFields: ['pendingAt'] });
 }
 
 export async function updateUserPush(userId, push) {
@@ -69,8 +85,26 @@ export async function updateUserPush(userId, push) {
 }
 
 // Aiden threads live on config/banter.threads (see js/lib/threads.js + CLAUDE.md).
-// Full-map replace of `threads` — callers pass the complete map from live state
-// after a local append/delete (acceptable race for a small trusted group).
-export async function writeBanterThreads(threads) {
-  await setDoc(doc(db, 'config', 'banter'), { threads }, { mergeFields: ['threads'] });
+//
+// Writes ONE thread key via a FieldPath, never the whole map. The old full-map
+// replace meant two blokes commenting at the same time clobbered each other,
+// and the hourly tick (which also rewrote the whole map from a snapshot taken
+// before a 1-3 minute model call) destroyed anything posted in between.
+// FieldPath is required rather than a dotted string because entry ids contain
+// hyphens, which Firestore's field-path parser rejects.
+//
+// Passing `null` removes the key outright (deleteField), so binning the last
+// comment in a thread does not leave `{messages: []}` behind forever.
+//
+// `pendingAt` rides along in the same write (one round trip, and the tick can
+// never see the comment without the marker that wakes it).
+export async function writeBanterThread(target, thread) {
+  await setDoc(
+    doc(db, 'config', 'banter'),
+    {
+      threads: { [target]: thread ?? deleteField() },
+      pendingAt: new Date().toISOString()
+    },
+    { mergeFields: [new FieldPath('threads', target), 'pendingAt'] }
+  );
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { STORYLINES, activeStorylines } from '../scripts/storylines.mjs';
-import { computeHashes } from '../scripts/lib/decide.mjs';
+import { buildContext } from '../scripts/lib/context.mjs';
 
 const users = [
   { id: 'u1', name: 'Simon' },
@@ -38,21 +38,20 @@ test('activeStorylines keeps a storyline through its until date and drops it aft
   assert.equal(after.length, 0);
 });
 
-test('computeHashes folds the active storyline set into every dashboard-card hash', () => {
-  // While a storyline is live vs after it has expired, the card hashes must
-  // differ so adding or expiring a storyline regenerates the cards on the next
-  // tick. weight/steps/workouts do not otherwise depend on `today`, so any
-  // difference here is the storyline fold at work.
-  const live = computeHashes(users, entries, '2026-07-20'); // both storylines active
-  const gone = computeHashes(users, entries, '2030-01-01'); // none active
-  for (const k of ['weight', 'steps', 'workouts']) {
-    assert.notEqual(gone[k], live[k], `${k} hash should change when the storyline set changes`);
-  }
+test('active storylines reach the copywriter context', () => {
+  const ctx = buildContext({
+    users, entries, banter: {}, challengeStart: '2026-07-13', today: '2026-07-20',
+    wantReport: true
+  });
+  assert.equal(ctx.storylines.length, 2);
+  assert.deepEqual(new Set(ctx.storylines.map(s => s.subject)), new Set(['Swifty', 'Jon']));
+  for (const s of ctx.storylines) assert.ok(s.note && s.until && s.id);
 });
 
-test('computeHashes is stable while the active storyline set is unchanged (weight is today-independent)', () => {
-  const a = computeHashes(users, entries, '2026-07-20');
-  const b = computeHashes(users, entries, '2026-07-24'); // both still active, no entry churn
-  assert.equal(a.weight, b.weight);
-  assert.equal(a.workouts, b.workouts);
+test('expired storylines are withheld from the context', () => {
+  const ctx = buildContext({
+    users, entries, banter: {}, challengeStart: '2026-07-13', today: '2026-07-26',
+    wantReport: true
+  });
+  assert.deepEqual(ctx.storylines, []);
 });

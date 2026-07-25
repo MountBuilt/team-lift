@@ -1,27 +1,45 @@
-// Aiden threads + daily card-parent freeze. Pure logic only (no Firebase, no DOM).
-// Spec: docs/superpowers/specs/2026-07-19-aiden-threads-design.md
+// Aiden threads + the daily morning report. Pure logic only (no Firebase, no DOM).
+// Spec: docs/superpowers/specs/2026-07-26-morning-report-design.md
 //
-// Card coach lines (weight/steps/workouts) rewrite once per local day (~3am).
-// Crew banter lives in threads under those parents and under feed entry ids.
-// Keep this file the single source for pending work, purge, and comment-worthy
-// rules so the orchestrator and tests cannot drift.
+// 2026-07-26 rework (Claude/Opus 5). Read this before changing thread behaviour:
+//
+// * The three card parents (weight/steps/workouts) are GONE. One `report`
+//   parent replaces them, rewritten once a day on the ~3am path. Crew banter
+//   hangs off that single thread plus per-entry feed threads.
+// * Feed parent lines are now LOCAL TEMPLATES (js/lib/banter.js feedLine),
+//   written instantly by the client with no AI call and never rewritten.
+// * Because the feed parent is no longer Aiden's voice, Aiden reacting under a
+//   feed line is no longer double-talk, so proactive feed comments are back ON
+//   (they were disabled 2026-07-19 for exactly that reason). The old re-fire
+//   bug is fixed structurally: proactive fires only when a thread has NO Aiden
+//   message at all, so re-editing an entry can never re-trigger it.
 import { addDays, mondayOf } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
+import { isBigEffort } from './banter.js';
 
-export const CARD_TARGETS = ['weight', 'steps', 'workouts'];
+/** The single card-style parent. Kept as an array so callers stay generic. */
+export const REPORT_TARGET = 'report';
+export const CARD_TARGETS = [REPORT_TARGET];
+
 export const USER_MSG_MAX = 160;
 export const AIDEN_MSG_MAX = 240;
 export const FEED_THREAD_MAX_AGE_DAYS = 3;
 export const MEMORY_KEEP = 14;
-/** Local HH:MM — first tick at or after this with cardsDay !== today rewrites parents. */
-export const DAILY_CARD_AFTER = '03:00';
+/** Proactive "nice work" comments Aiden may open per tick. Keeps a burst of
+ *  logging from turning into a wall of bot chatter. */
+export const MAX_PROACTIVE_FEED = 3;
+/** Only today's and yesterday's logs earn a proactive reaction. */
+export const PROACTIVE_MAX_AGE_DAYS = 1;
+/** Local HH:MM — first tick at or after this with reportDay !== today writes it. */
+export const DAILY_REPORT_AFTER = '03:00';
 
 const pad = (n) => String(n).padStart(2, '0');
 export const hhmm = (now) => `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-export function needsDailyCardRefresh(cardsDay, today, now) {
-  if (cardsDay === today) return false;
-  return hhmm(now) >= DAILY_CARD_AFTER;
+/** True when the morning report is due (self-heals on first tick after wake). */
+export function needsDailyReport(reportDay, today, now) {
+  if (reportDay === today) return false;
+  return hhmm(now) >= DAILY_REPORT_AFTER;
 }
 
 /** Messages shown in the UI (soft-deleted hidden). */
@@ -34,7 +52,7 @@ export function commentCount(thread) {
 }
 
 /**
- * Mon–Sun standings the copywriter must use for card parents (not all-time).
+ * Mon–Sun standings the report must use for session counts (not all-time).
  * workouts = days with a non-empty workoutParts this week.
  */
 export function thisWeekStandings(entries, users, todayStr) {
@@ -58,13 +76,14 @@ export function thisWeekStandings(entries, users, todayStr) {
   };
 }
 
-/** Aligns with feed "BIG EFFORT" plus first weigh-in and 3rd workout day of week. */
+/**
+ * Aligns with the feed "BIG EFFORT" badge (delegated to isBigEffort so the two
+ * can never drift), plus a first weigh-in and the week's third workout day.
+ */
 export function isCommentWorthy(entry, entries, mondayStr) {
   if (!entry) return false;
   const parts = Array.isArray(entry.workoutParts) ? entry.workoutParts.length : 0;
-  if (typeof entry.steps === 'number' && entry.steps >= 15000) return true;
-  if (parts >= 3) return true;
-  if (parts > 0 && entry.dailyChallenge === true) return true;
+  if (isBigEffort(entry)) return true;
   if (typeof entry.weight === 'number') {
     const earlier = entries.some(e =>
       e.userId === entry.userId &&
@@ -73,12 +92,17 @@ export function isCommentWorthy(entry, entries, mondayStr) {
     );
     if (!earlier) return true;
   }
-  // Third workout day of this Mon–Sun week (crossing the team target), not every
-  // session after that.
+  // Third workout day of this Mon–Sun week (crossing the team target).
   if (parts > 0 && weeklyWorkoutCount(entries, entry.userId, mondayStr) === 3) {
     return true;
   }
   return false;
+}
+
+/** True once Aiden has said anything in this thread. */
+export function aidenHasSpoken(thread) {
+  return Boolean(thread?.lastAidenAt) ||
+    (thread?.messages || []).some(m => m.kind === 'aiden');
 }
 
 /**
@@ -100,26 +124,38 @@ export function pendingForThread(thread) {
 
 /**
  * Build the list of thread targets Aiden should answer this tick.
- * Card targets: human pending only.
- * Feed targets: human pending only.
  *
- * Pure proactive digs (comment-worthy log, no humans) are off. The feed parent
- * line is already Aiden's public reaction; opening a solo thread under it made
- * him re-hype the same log (and re-edits re-fired because updatedAt > scanAt).
- * When humans banter, attach any comment-worthy entry as context for the reply.
+ * Three sources, in priority order:
+ *  1. Humans talking under the report parent.
+ *  2. Humans talking under a feed line.
+ *  3. Proactive praise on a fresh comment-worthy log that Aiden has never
+ *     touched (capped at MAX_PROACTIVE_FEED, today/yesterday only).
+ *
+ * @param {object} opts
+ * @param {object} opts.threads   config/banter.threads
+ * @param {object[]} opts.entries  all entries (numeric or ISO updatedAt both fine)
+ * @param {string} opts.today
+ * @param {string[]} [opts.feedIds] ids currently rendered in Recent activity
  */
-export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) {
+export function collectThreadJobs({ threads, entries, today, feedIds }) {
   const monday = mondayOf(today);
-  const jobs = [];
   const tmap = threads || {};
-  const entryById = new Map((entries || []).filter(e => e?.id).map(e => [e.id, e]));
+  const list = entries || [];
+  const entryById = new Map(list.filter(e => e?.id).map(e => [e.id, e]));
+  const jobs = new Map();
 
+  const worthyFor = (target) => {
+    const e = entryById.get(target);
+    return e && isCommentWorthy(e, list, monday) ? [e] : [];
+  };
+
+  // 1. The report parent.
   for (const key of CARD_TARGETS) {
     const pending = pendingForThread(tmap[key]);
     if (pending.hasWork) {
-      jobs.push({
+      jobs.set(key, {
         target: key,
-        kind: 'card',
+        kind: 'report',
         newUser: pending.newUser,
         deletesToAck: pending.deletesToAck,
         worthy: []
@@ -127,65 +163,61 @@ export function collectThreadJobs({ threads, entries, today, scanAt, feedIds }) 
     }
   }
 
-  const feedIdSet = new Set(feedIds || []);
-  // Context only: recent comment-worthy entries (for human-led feed replies).
-  // scanAt still gates "recent" so we do not re-attach every historic big log.
-  const worthyByEntry = new Map();
-  if (scanAt) {
-    for (const e of entries || []) {
-      if (!e?.id || !e.date) continue;
-      if (e.date < addDays(today, -FEED_THREAD_MAX_AGE_DAYS)) continue;
-      const updated = typeof e.updatedAt === 'number'
-        ? new Date(e.updatedAt).toISOString()
-        : (e.updatedAt || '');
-      if (updated && updated <= scanAt) continue;
-      if (!isCommentWorthy(e, entries, monday)) continue;
-      worthyByEntry.set(e.id, e);
-    }
-  }
-
-  // Existing feed threads only (humans create them). No auto-open from worthy.
+  // 2. Human-led feed threads.
   for (const target of Object.keys(tmap).filter(k => !CARD_TARGETS.includes(k))) {
-    if (feedIds && feedIdSet.size > 0 && !feedIdSet.has(target)) {
-      // Still allow pending human work on a thread even if momentarily off feed set
-      const pendingOnly = pendingForThread(tmap[target]);
-      if (!pendingOnly.hasWork) continue;
-    }
     const pending = pendingForThread(tmap[target]);
     if (!pending.hasWork) continue;
-    const worthy = worthyByEntry.has(target)
-      ? [worthyByEntry.get(target)]
-      : (entryById.has(target) && isCommentWorthy(entryById.get(target), entries, monday)
-        ? [entryById.get(target)]
-        : []);
-    jobs.push({
+    jobs.set(target, {
       target,
       kind: 'feed',
       newUser: pending.newUser,
       deletesToAck: pending.deletesToAck,
-      worthy
+      worthy: worthyFor(target)
     });
   }
 
-  return jobs;
+  // 3. Proactive praise, newest first, only where Aiden has never spoken.
+  const oldest = addDays(today, -PROACTIVE_MAX_AGE_DAYS);
+  const inFeed = new Set(feedIds || []);
+  const candidates = list
+    .filter(e => e?.id && e.date && e.date >= oldest && e.date <= today)
+    .filter(e => inFeed.size === 0 || inFeed.has(e.id))
+    .filter(e => !jobs.has(e.id))
+    .filter(e => !aidenHasSpoken(tmap[e.id]))
+    .filter(e => isCommentWorthy(e, list, monday))
+    .sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : (a.date < b.date ? 1 : -1)))
+    .slice(0, MAX_PROACTIVE_FEED);
+
+  for (const e of candidates) {
+    jobs.set(e.id, {
+      target: e.id,
+      kind: 'praise',
+      newUser: [],
+      deletesToAck: [],
+      worthy: [e]
+    });
+  }
+
+  return [...jobs.values()];
 }
 
-/** One-line digest material from card threads before 3am wipe. */
+/**
+ * Digest material from the report thread before the 3am wipe.
+ * Keeps the actual TEXT (truncated), not just who spoke — the old version
+ * stored "workouts: Simon bantered (2 msgs)", which gave Aiden nothing to call
+ * back to, so the memory feature did literally nothing.
+ */
 export function digestCardThreads(threads, day) {
-  const notes = [];
+  const lines = [];
   for (const key of CARD_TARGETS) {
-    const vis = visibleMessages(threads?.[key]);
-    if (vis.length === 0) continue;
-    const users = vis.filter(m => m.kind === 'user').map(m => m.name || 'someone');
-    const unique = [...new Set(users)];
-    if (unique.length) {
-      notes.push(`${key}: ${unique.join(', ')} bantered (${vis.length} msgs)`);
-    } else {
-      notes.push(`${key}: Aiden only (${vis.length} msgs)`);
+    for (const m of visibleMessages(threads?.[key])) {
+      const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'someone');
+      const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      if (text) lines.push(`${who}: ${text}`);
     }
   }
-  if (notes.length === 0) return null;
-  return { day, notes: notes.slice(0, 3) };
+  if (lines.length === 0) return null;
+  return { day, lines: lines.slice(0, 8) };
 }
 
 export function wipeCardThreads(threads) {
@@ -195,20 +227,19 @@ export function wipeCardThreads(threads) {
 }
 
 /**
- * Drop feed threads older than FEED_THREAD_MAX_AGE_DAYS or not in the current
- * recent-feed id set. Card keys always kept (until wipeCardThreads).
+ * Drop feed threads older than FEED_THREAD_MAX_AGE_DAYS. No longer purges by
+ * "not in the current 12-item feed window" — with 8 blokes logging daily that
+ * window is ~1.5 days, so crew comments were being binned inside 2 days
+ * despite the 3-day rule. Date is the only test now.
  */
-export function purgeStaleFeedThreads(threads, { today, feedIds }) {
+export function purgeStaleFeedThreads(threads, { today }) {
   const next = { ...(threads || {}) };
-  const keep = new Set(feedIds || []);
   const oldest = addDays(today, -FEED_THREAD_MAX_AGE_DAYS);
   for (const key of Object.keys(next)) {
     if (CARD_TARGETS.includes(key)) continue;
     // entry ids are `{userId}_{YYYY-MM-DD}`
     const datePart = key.includes('_') ? key.slice(key.lastIndexOf('_') + 1) : '';
-    const tooOld = datePart && datePart < oldest;
-    const offFeed = keep.size > 0 && !keep.has(key);
-    if (tooOld || offFeed) delete next[key];
+    if (datePart && datePart < oldest) delete next[key];
   }
   return next;
 }
@@ -218,14 +249,21 @@ export function trimMemory(memory, keep = MEMORY_KEEP) {
   return list.slice(-keep);
 }
 
-/** Apply Aiden replies + clean tombstones after a successful tick. */
-export function applyThreadReplies(threads, replies, nowIso) {
+/**
+ * Apply Aiden replies + clean tombstones after a successful tick.
+ *
+ * `lastAidenAt` defaults to `nowIso` but the orchestrator passes the PRE-CALL
+ * timestamp instead. The model call takes seconds to minutes, and a comment
+ * posted during it has `at` later than that, so it stays pending and gets
+ * answered next tick rather than being silently marked as read.
+ */
+export function applyThreadReplies(threads, replies, nowIso, lastAidenAt = nowIso) {
   const next = { ...(threads || {}) };
   for (const [target, text] of Object.entries(replies || {})) {
     if (!text || !String(text).trim()) continue;
     const prev = next[target] || { messages: [], lastAidenAt: null };
     const messages = (prev.messages || [])
-      .filter(m => !(m.kind === 'user' && m.deleted === true && (m.at || '') <= (prev.lastAidenAt || nowIso)))
+      .filter(m => !(m.kind === 'user' && m.deleted === true && (m.at || '') <= (prev.lastAidenAt || lastAidenAt)))
       .concat([{
         id: `aiden_${target}_${nowIso}`,
         kind: 'aiden',
@@ -233,9 +271,32 @@ export function applyThreadReplies(threads, replies, nowIso) {
         text: String(text).trim(),
         at: nowIso
       }]);
-    next[target] = { messages, lastAidenAt: nowIso };
+    next[target] = { messages, lastAidenAt };
   }
   return next;
+}
+
+/**
+ * Per-key write plan so the orchestrator never PATCHes the whole `threads` map.
+ * Whole-map writes from both the client and the tick were silently destroying
+ * comments posted while Claude was thinking (1-3 minutes,
+ * every tick). Compare a freshly-fetched map against the intended one and
+ * touch only what actually changed.
+ *
+ * @returns {{sets: Record<string,object>, deletes: string[]}}
+ */
+export function threadWritePlan(prev, next) {
+  const before = prev || {};
+  const after = next || {};
+  const sets = {};
+  const deletes = [];
+  for (const key of Object.keys(after)) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) sets[key] = after[key];
+  }
+  for (const key of Object.keys(before)) {
+    if (!(key in after)) deletes.push(key);
+  }
+  return { sets, deletes };
 }
 
 /** Hard-remove a user message if Aiden has not answered past it; else soft-delete. */

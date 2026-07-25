@@ -3,7 +3,9 @@ import {
 } from '../lib/aggregate.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
-import { pickFrom, stepsComment, workoutsComment, weightComment, banterFresh, CHALLENGE_QUIPS } from '../lib/banter.js';
+import { pickFrom, CHALLENGE_QUIPS } from '../lib/banter.js';
+import { templateReport, reportFresh } from '../lib/report.js';
+import { REPORT_TARGET } from '../lib/threads.js';
 import { saveEntry } from '../firebase.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
@@ -20,9 +22,29 @@ const card = (inner, i, extra = '') =>
 // Plain coach line (daily challenge quip — not threaded).
 const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
 
-// Aiden parent under a card: tappable thread (see js/ui/thread.js). No separate Reply.
-const coachThread = (target, comment, banter) =>
-  comment ? threadBlockHtml(target, esc(comment), banter) : '';
+/**
+ * Aiden's morning report: one piece of copy about yesterday across weight, the
+ * daily challenge, workouts and steps, with the crew's comment thread attached.
+ *
+ * This replaced the three separate per-card coach threads (weight/steps/
+ * workouts) on 2026-07-26. One good daily read with a through-line beats three
+ * disconnected 200-char quips, it is one comment surface instead of three, and
+ * it is one model call instead of three. Do not put coach lines back on the
+ * chart cards. See CLAUDE.md.
+ */
+function reportCard(state, today) {
+  const ai = reportFresh(state.banter?.report, today) ? state.banter.report.text : null;
+  const text = ai ?? templateReport(
+    state.entries, state.users, today,
+    dailyChallenge(today, state.challenge.startDate)
+  );
+  return `
+    <div class="flex items-center justify-between">
+      <h3 class="eyebrow">Aiden's morning report</h3>
+      <span class="eyebrow text-neutral-600">Yesterday</span>
+    </div>
+    ${threadBlockHtml(REPORT_TARGET, esc(text), state.banter, { parentClass: 'report-parent' })}`;
+}
 
 function headerHtml(c, today) {
   const wk = weekNumber(today, c.startDate);
@@ -216,29 +238,26 @@ export function renderDashboard(container, state, { animate = false } = {}) {
   const c = state.challenge;
   const today = todayStr();
   const monday = mondayOf(today);
-  const ai = banterFresh(state.banter, today) ? state.banter : null;
 
   container.innerHTML = `
     <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pb-28 pt-5">
       ${headerHtml(c, today)}
-      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), 1)}
-      ${today <= c.endDate ? card(challengeCard(state, today), 2) : ''}
+      ${card(reportCard(state, today), 1, 'report-card')}
+      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), 2)}
+      ${today <= c.endDate ? card(challengeCard(state, today), 3) : ''}
       ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>
-        ${coachThread('weight', ai?.cards?.weight ?? weightComment(state.entries, state.users, today), state.banter)}`, 3)}
-      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:4">
-        ${workoutsPanel(state, monday) +
-          coachThread('workouts', ai?.cards?.workouts ?? workoutsComment(state.entries, state.users, monday, today), state.banter)}
+        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>`, 4)}
+      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:5">
+        ${workoutsPanel(state, monday)}
       </section>
       ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>
-        ${coachThread('steps', ai?.cards?.steps ?? stepsComment(state.entries, state.users, monday, today), state.banter)}`, 5)}
-      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, 6)}
+        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>`, 6)}
+      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, 7)}
     </div>`;
 
-  renderFeed(container.querySelector('#feed'), state.entries, ai, state.users, state.banter);
+  renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
   bindThreads(container, state.banter);
   initWorkoutTooltip(container.querySelector('#workouts-card'));
   if (animate) runCountUps(container);

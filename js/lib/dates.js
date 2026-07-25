@@ -51,6 +51,30 @@ export function formatShort(dateStr) {
   return `${wd} ${dt.getDate()} ${mo}`;
 }
 
+/** How many days back the log sheet's quick day picker offers. */
+export const DAY_CHOICES = 3;
+
+/**
+ * Options for the log sheet's day picker: today, yesterday, the day before.
+ * A native date input was overkill (a whole calendar to choose between three
+ * realistic answers, and fiddly on a phone). Labels come from dayLabel so they
+ * read the same as the Recent activity day headings.
+ *
+ * If the sheet was opened to edit something older (from the Me view), that day
+ * is appended so the current selection is always representable.
+ */
+export function dayOptions(selectedDate, today = todayStr()) {
+  const opts = [];
+  for (let i = 0; i < DAY_CHOICES; i++) {
+    const date = addDays(today, -i);
+    opts.push({ date, label: dayLabel(date, today) });
+  }
+  if (selectedDate && !opts.some(o => o.date === selectedDate)) {
+    opts.push({ date: selectedDate, label: formatShort(selectedDate) });
+  }
+  return opts;
+}
+
 // Human day label relative to today: Today, Yesterday, full weekday name for
 // 2..6 days ago, else the short formatted date (also covers future dates).
 export function dayLabel(dateStr, todayStr) {

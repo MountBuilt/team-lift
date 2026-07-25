@@ -2,8 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Trusted small group; obscurity-level security accepted per spec §3.
-    match /users/{userId} { allow read, write: if true; }
-    match /entries/{entryId} { allow read, write: if true; }
-    match /config/{docId} { allow read, write: if true; }
+    // Deletes are denied everywhere: nothing in the app ever needs to delete a
+    // document (entries are merged, thread messages are removed via a field
+    // update on config/banter), so a stray script or a bored bloke with the
+    // public web key cannot wipe the board.
+    match /users/{userId} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
+    match /entries/{entryId} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
+    match /config/{docId} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
   }
 }

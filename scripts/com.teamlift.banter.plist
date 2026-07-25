@@ -9,12 +9,17 @@
     <string>/bin/bash</string>
     <string>/Users/simongilmore/Projects/team-lift/scripts/refresh-banter.sh</string>
   </array>
-  <!-- Hourly; launchd coalesces missed runs into one on wake from sleep.
-       Cheap to run this often: the script hashes each dashboard section and
-       only calls out to claude when something actually changed, so a quiet
-       hour costs one date-bump PATCH and no AI call. -->
+  <!-- Every 60s; launchd coalesces missed runs into one on wake from sleep.
+       This is what makes Aiden feel live: a bloke posts a comment and gets an
+       answer inside a minute or two instead of up to an hour.
+
+       Affordable because the tick starts with a two-document probe (read
+       config/banter + config/push) and exits immediately when there is nothing
+       to do — no writes, no model call, and the wrapper does not even log it.
+       An idle day costs ~2,900 document reads against the 50k free-tier daily
+       allowance. See probeWork() in scripts/lib/decide.mjs. -->
   <key>StartInterval</key>
-  <integer>3600</integer>
+  <integer>60</integer>
   <!-- Also fire at login, covering slots the Mac was powered off for.
        The script's own hash-based change detection keeps this cheap. -->
   <key>RunAtLoad</key>

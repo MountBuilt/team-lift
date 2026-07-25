@@ -5,93 +5,122 @@ CSS) + Chart.js (CDN, deferred), Firebase Firestore backend (open rules,
 trusted group, offline persistence on), installable PWA, hosted on GitHub
 Pages.
 
+**The one goal: get the crew logging something every day.** Judge every change
+against that.
+
 **Maintainers:** Claude and Grok both work this repo. Read this file and the
-specs under `docs/superpowers/specs/` before changing banter, push, or threads.
-Leave short comments when you change cross-agent behaviour (orchestrator,
-`config/banter` shape, copywriter skill).
+specs under `docs/superpowers/specs/` before changing the report, the feed, the
+tick, or the copywriter. Leave short comments when you change cross-agent
+behaviour (orchestrator, `config/banter` shape, `scripts/prompt/aiden.md`).
 
 ## Specs (read these)
 - v1 app: `docs/superpowers/specs/2026-07-08-team-lift-design.md`
 - Push + orchestrator: `docs/superpowers/specs/2026-07-13-push-notifications-design.md`
-- **Aiden threads + daily card freeze (2026-07-19):**
-  `docs/superpowers/specs/2026-07-19-aiden-threads-design.md` — **source of
-  truth** for coach parents, crew replies, and Aiden memory.
+- Thread mechanics: `docs/superpowers/specs/2026-07-19-aiden-threads-design.md`
+  (its three card parents are superseded; the thread rules still stand)
+- **Morning report + live replies (2026-07-26):**
+  `docs/superpowers/specs/2026-07-26-morning-report-design.md` — **source of
+  truth** for Aiden, the feed, and the tick.
 
 ## Commands
 - Unit tests: `node --test` (auto-discovers `tests/*.test.js`; Node 26 rejects a bare `tests/` directory argument)
 - Run locally: `python3 -m http.server 8000` then open http://localhost:8000
 - Deploy: push to `main` (GitHub Pages serves repo root)
 - Firestore rules deploy: `firebase deploy --only firestore:rules`
-- Hourly tick (banter + pushes + Aiden threads) by hand: `bash scripts/refresh-banter.sh`
+- Tick (report + replies + pushes) by hand: `bash scripts/refresh-banter.sh`
   (wrapper for `node scripts/orchestrator.mjs`; supports `--dry-run` and
-  `--send-test <userId>`; logs to `~/Library/Logs/teamlift-banter.log`)
+  `--send-test <userId>`; logs to `~/Library/Logs/teamlift-banter.log`, and
+  stays silent for idle ticks)
 - Tailwind rebuild (needed whenever HTML/JS gains a utility class not already
   in use): `npx tailwindcss@3.4.17 -i css/tailwind.source.css -o css/tailwind.css --minify`
 
 ## Conventions
-- `js/lib/` = pure logic only (dates, aggregation, threads). No Firebase imports, no DOM.
-  Everything here needs `node --test` coverage.
+- `js/lib/` = pure logic only (dates, aggregation, threads, report). No Firebase
+  imports, no DOM. Everything here needs `node --test` coverage. If a UI module
+  grows a pure helper worth testing, move it here (it cannot be imported under
+  node otherwise, because `js/firebase.js` pulls the SDK from a CDN URL).
 - `js/ui/` = one module per screen/component; each exports a `render*` function
   that takes state and returns/updates DOM.
 - All entry dates are local `YYYY-MM-DD` strings. Weeks are Mon–Sun.
 - UI copy says "workout", never "gym".
-- The banter bot is named **Aiden** (UI label + copywriter voice). Offline
-  fallback templates still live in `js/lib/banter.js` when AI banter is stale.
+- The banter bot is named **Aiden** (UI label + copywriter voice).
 - Feed lines and dashboard quips: deliberately over-the-top, explicit Aussie
   gym banter (swearing intended — don't sanitise). Deterministic seeded picks
   so quips rotate daily and stay testable.
   No em-dashes in any user-facing copy or banter (they read as AI-written);
   use a comma, full stop, or plain hyphen.
+- **Never publish an absolute weight in kg.** Deltas and trends only, in the
+  charts and in the banter. The copywriter context carries `weightDelta` and
+  never a raw weight, so the model cannot leak one; `findAbsoluteWeight()` in
+  `scripts/lib/context.mjs` is a backstop.
 - Topical storylines (`scripts/storylines.mjs`): real-world banter fed from
   the group chat. Each entry is `{ id, subject, until, note }` (`subject` = a
   bloke's name or `'team'`, `until` = inclusive last-active `YYYY-MM-DD`).
   `context.mjs` passes the active set to the copywriter, which weaves them in;
-  they're folded into the card hashes so adding/expiring one regenerates the
-  cards next tick, then it reverts to general banter on its own. To add one,
-  edit the array. Same-day grace: nobody is roasted for not-yet-logging today,
-  and 1-2 empty days = rest (`REST_GRACE_DAYS`), 3+ = fair game.
+  they expire on their own. To add one, edit the array. Same-day grace: nobody
+  is roasted for not-yet-logging today, and 1-2 empty days = rest
+  (`REST_GRACE_DAYS`), 3+ = fair game.
 - Daily challenge (`js/lib/challenge.js`): one bodyweight exercise per day,
   a pure function of the date (no backend state), reps ramp weekly from the
   challenge start. Ticking it writes `dailyChallenge: true` on that day's
   entry doc; streaks are consecutive ticked days.
 - Team weight chart plots actual kg but keeps exact values obscured: coarse
   10 kg y-axis ticks, tooltips show change vs first weigh-in (never absolute kg).
+- Log sheet day picker: `dayOptions()` in `js/lib/dates.js` offers today,
+  yesterday and the day before, collapsed to the selected day until tapped.
+  There is no calendar input; nobody backfills further than two days.
 - Web push (`js/push.js`, toggle on the Me view): raw VAPID, subscription
-  stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs` on the
-  hourly launchd tick: morning motivation from 7:30am (skipped after 8:30pm),
-  evening reminder from 8:30pm only if nothing is logged that day; state in
-  `config/push` (`lastMorning`/`lastEvening`) so missed ticks self-heal and
-  never double-send. Claude (Sonnet) writes all copy via
-  `.claude/skills/copywriter` from a pre-built context file and never touches
-  the network; the orchestrator owns every fetch, hash, PATCH, and send.
+  stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs`: morning
+  motivation from 7:30am (skipped after 8:30pm), evening reminder from 8:30pm
+  only if nothing is logged that day; state in `config/push`
+  (`lastMorning`/`lastEvening`) so missed ticks self-heal and never double-send.
 
-## Aiden + card parents (2026-07-19) — do not regress
+## Aiden (2026-07-26) — do not regress
 
-Full detail: `docs/superpowers/specs/2026-07-19-aiden-threads-design.md`.
+Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
 
-- **Bot name:** Aiden.
-- **Card parents** (`config/banter.cards` weight/steps/workouts): rewritten only
-  on the **daily ~3am path** (`cardsDay !== today` and local time ≥ 03:00;
-  self-heals on first tick after Mac wake). **Do not** rewrite card parents
-  mid-day when entry hashes change — that was the stale "Hunt and Simon on 7
-  sessions" class of bug. Mid-day reaction lives in **threads**.
-- **Week scope:** copywriter context includes precomputed `thisWeek` standings
-  (Mon–Sun). Workouts parent must use those counts, never all-time session totals.
-- **Threads** live on `config/banter.threads` (not a new collection):
-  - Keys: `weight` | `steps` | `workouts` | `{entryId}` for feed rows.
+- **Recent activity is template-only.** `js/ui/feed.js` always renders
+  `feedLine(entry)`, instantly, client-side, no AI. It is the reward for
+  logging, so it must never be rewritten after the fact. Freshness comes from
+  widening the pools in `js/lib/banter.js`, not from the model. The seed is
+  `userId|date`, so editing an entry keeps its line.
+- **Aiden reacts as a comment, never a rewrite.** A comment-worthy log gets a
+  `praise` thread reply (capped at `MAX_PROACTIVE_FEED` per tick, today and
+  yesterday only, gated on `aidenHasSpoken` so an entry edit can never re-fire
+  it). This intentionally re-enables what 2026-07-19 turned off; that ban only
+  made sense while the feed parent was AI-written.
+- **One morning report, not three card parents.** `config/banter.report`
+  ({day, text}), 300-600 chars, covers **yesterday only** across weight,
+  challenge, workouts and steps, with one thread (`target: 'report'`). Written
+  on the first tick after 03:00. Do NOT put coach lines back on the
+  weight/steps/workouts cards.
+- **Week scope:** any weekly standing quoted in copy comes from the precomputed
+  `thisWeek` (Mon–Sun), never all-time totals.
+- **Threads** live on `config/banter.threads`:
+  - Keys: `report` | `{entryId}` for feed rows.
   - Messages: `{ id, kind: 'user'|'aiden', userId?, name?, text, at, deleted? }`.
-  - User text max 160. Author can bin own messages anytime.
-  - Delete **before** Aiden answers → hard remove (never happened).
-  - Delete **after** → soft-delete; next tick Aiden may ack once, then drop tombstone.
-- **UI:** No "Reply" buttons. Tap the **parent text** to expand thread + focus
-  compose. Show **"N comments"** only when N ≥ 1 (N = all visible msgs, user+Aiden).
-  No timestamps. No "waiting on Aiden".
-- **Aiden hourly:** at most **one** reply per target per tick, covering all new
-  human messages (+ delete acks). Feed threads are **human-led** (no pure
-  proactive dig under a feed parent - that double-talked the feed line when
-  entries were re-edited). Card threads stay human-led.
-- **3am:** digest card threads → `memory[]` (keep ~14 days), wipe card threads,
-  write new parents. Feed threads discarded when parent is **> 3 days** old or
-  off the recent feed — no feed digest.
-- Pure helpers: `js/lib/threads.js` (+ tests). Orchestrator: `scripts/orchestrator.mjs`.
-  Context/validate: `scripts/lib/context.mjs`. Skill: `.claude/skills/copywriter`.
+  - User text max 160, Aiden 240. Author can bin own messages anytime.
+  - Delete **before** Aiden answers → hard remove; **after** → soft-delete, then
+    Aiden acks once and the tombstone drops.
+  - Purged on **date only** (3 days). Do not reintroduce purge-by-feed-window:
+    with 8 blokes logging daily that window is ~1.5 days, so comments were being
+    binned inside 2 days.
+- **Never PATCH the whole `threads` map.** The client writes one key via
+  `FieldPath`; the tick writes a per-key `threadWritePlan` computed against a
+  freshly re-read doc. Whole-map writes were destroying comments posted while
+  the model was thinking. And `lastAidenAt` is stamped with the **pre-call**
+  time so a mid-call comment stays pending.
+- **The tick is a 60s probe.** `probeWork()` reads two config docs and exits if
+  there is nothing to do; only then does it fetch users + entries. Clients stamp
+  `config/banter.pendingAt` (`pokeAiden()`) so a comment or a log wakes Aiden
+  within a minute or two. Don't add per-tick work that needs a full fetch.
+- **Copy backend:** `scripts/lib/copywriter.mjs`. API key at
+  `~/.config/teamlift/anthropic-key` → Messages API (~3-6s, needed for live
+  replies). Otherwise `claude -p` on the Pro subscription (~88s, free).
+- **Voice guide:** `scripts/prompt/aiden.md`. Keep it principles-first. The old
+  394-line skill with its bank of numbered joke shapes and 40-row nickname table
+  made the copy MORE formulaic, because the model picked from the list instead
+  of reacting to the data. Don't rebuild it.
+- Pure helpers: `js/lib/threads.js`, `js/lib/report.js` (+ tests).
+  Orchestrator: `scripts/orchestrator.mjs`. Context/validate:
+  `scripts/lib/context.mjs`.

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  pickFrom, feedLine, stepsComment, workoutsComment, weightComment, banterFresh,
+  pickFrom, feedLine, stepsComment, workoutsComment, weightComment,
   nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS,
   hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS,
   isBigEffort, effortLabel, EFFORT_LABELS
@@ -24,10 +24,14 @@ test('pickFrom is deterministic and in range', () => {
   assert.ok(arr.includes(pickFrom(arr, 'anything')));
 });
 
-test('isBigEffort flags 15k steps, multi-part, and workout+challenge', () => {
-  assert.equal(isBigEffort({ steps: 15000 }), true);
-  assert.equal(isBigEffort({ workoutParts: ['a', 'b', 'c'] }), true);
-  assert.equal(isBigEffort({ workoutParts: ['legs'], dailyChallenge: true }), true);
+test('isBigEffort flags 18k steps, four-part sessions, and a real session + challenge', () => {
+  assert.equal(isBigEffort({ steps: 18000 }), true);
+  assert.equal(isBigEffort({ workoutParts: ['a', 'b', 'c', 'd'] }), true);
+  assert.equal(isBigEffort({ workoutParts: ['legs', 'core'], dailyChallenge: true }), true);
+  // Tightened 2026-07-26: the old bar fired on 45% of rows, which is not a badge.
+  assert.equal(isBigEffort({ steps: 15000 }), false);
+  assert.equal(isBigEffort({ workoutParts: ['a', 'b', 'c'] }), false);
+  assert.equal(isBigEffort({ workoutParts: ['legs'], dailyChallenge: true }), false);
   assert.equal(isBigEffort({ workoutParts: ['legs'], steps: 2000 }), false);
 });
 
@@ -287,14 +291,8 @@ test('nickname-flavoured picks stay deterministic for the same inputs', () => {
   );
 });
 
-test('banterFresh accepts today/yesterday, rejects stale, future, or missing', () => {
-  assert.equal(banterFresh({ date: '2026-07-10' }, '2026-07-10'), true);
-  assert.equal(banterFresh({ date: '2026-07-09' }, '2026-07-10'), true);
-  assert.equal(banterFresh({ date: '2026-07-08' }, '2026-07-10'), false);
-  assert.equal(banterFresh({ date: '2026-07-11' }, '2026-07-10'), false);
-  assert.equal(banterFresh(null, '2026-07-10'), false);
-  assert.equal(banterFresh({}, '2026-07-10'), false);
-});
+// banterFresh moved to reportFresh in js/lib/report.js (covered by
+// tests/report.test.js) when feed lines became template-only.
 
 test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {
   assert.deepEqual(weightAxisBounds([95, 96]), { min: 80, max: 110 });

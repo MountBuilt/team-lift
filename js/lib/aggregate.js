@@ -94,10 +94,15 @@ export function streakWeeks(entries, userId, currentMondayStr) {
   return streak;
 }
 
+// totalWorkouts counts workout DAYS per member, summed — the same definition
+// thisWeekStandings().teamWorkouts uses. It used to count matching entry docs,
+// which is identical while there is one entry per user per day but silently
+// diverges the moment that stops being true.
 export function teamTiles(entries, users, mondayStr) {
   const end = addDays(mondayStr, 6);
   const week = entries.filter(e => e.date >= mondayStr && e.date <= end);
-  const totalWorkouts = week.filter(hasWorkout).length;
+  const totalWorkouts = users.reduce(
+    (sum, u) => sum + weeklyWorkoutCount(entries, u.id, mondayStr), 0);
   const totalSteps = week.reduce((sum, e) => sum + (typeof e.steps === 'number' ? e.steps : 0), 0);
   const membersAt3 = users.filter(u => weeklyWorkoutCount(entries, u.id, mondayStr) >= 3).length;
   return { totalWorkouts, membersAt3, totalMembers: users.length, totalSteps };

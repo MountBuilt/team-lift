@@ -1,45 +1,56 @@
 #!/usr/bin/env node
-// Hourly tick for Team Lift: Aiden banter (card parents + feed + threads) and
-// push notifications. Claude is invoked at most once per tick as a pure
-// copywriter (context.json in, copy.json out); this script owns all fetches,
-// hashes, PATCHes, and web-push sends.
+// Team Lift tick: Aiden's morning report, thread replies, and push sends.
+// Runs every 60s from launchd (com.teamlift.banter). This script owns every
+// fetch, write and send; scripts/lib/copywriter.mjs owns the model call.
 //
-// Card parents (weight/steps/workouts) rewrite only on the ~3am daily path
-// (cardsDay !== today, local time ≥ 03:00). Mid-day entry changes do NOT
-// rewrite parents — Aiden reacts in threads instead.
-// Spec: docs/superpowers/specs/2026-07-19-aiden-threads-design.md
+// Spec: docs/superpowers/specs/2026-07-26-morning-report-design.md
+//
+// SHAPE OF A TICK
+//   1. Probe: read config/banter + config/push only (2 document reads). If
+//      there is nothing to do, exit without writing anything. This is what
+//      makes a 60s interval affordable, and near-live Aiden replies possible.
+//   2. Otherwise fetch users + entries and work out what copy is needed.
+//   3. One model call for everything (report + all thread replies + pushes).
+//   4. Re-read config/banter, merge, and write only the fields that changed.
+//
+// DO NOT reintroduce whole-map `threads` writes. The client and this script
+// both used to PATCH the entire map, so any comment posted while the model was
+// thinking (1-3 minutes) was silently destroyed. Writes are per-thread-key now
+// and `lastAidenAt` is stamped with the PRE-CALL time so a comment that lands
+// mid-call is answered on the next tick instead of being marked as read.
 //
 // Flags:
-//   --dry-run            full tick including the Claude call; prints intended
-//                        PATCHes and pushes; writes and sends nothing
+//   --dry-run            full tick including the model call; prints intended
+//                        writes and pushes; writes and sends nothing
 //   --send-test <userId> send one canned push to that user's subscription, exit
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
 import { fetchCollection, fetchDoc, patchDoc, maskPath } from './lib/firestore-rest.mjs';
-import { computeHashes, changedSections, decidePushWork } from './lib/decide.mjs';
+import { probeWork, decidePushWork } from './lib/decide.mjs';
 import { buildContext, validateCopy } from './lib/context.mjs';
+import { generateCopy, backendName, MODEL } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
 import { groupFeedByDay } from '../js/lib/aggregate.js';
 import {
-  needsDailyCardRefresh, collectThreadJobs, digestCardThreads, wipeCardThreads,
-  purgeStaleFeedThreads, applyThreadReplies, trimMemory, CARD_TARGETS
+  collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
+  applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET
 } from '../js/lib/threads.js';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { VAPID_PUBLIC_KEY } from '../js/push-config.js';
 
-const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 const testAt = args.indexOf('--send-test');
 const TEST_USER = testAt >= 0 ? args[testAt + 1] : null;
 
-const privateKey = readFileSync(join(homedir(), '.config/teamlift/vapid-private.key'), 'utf8').trim();
-webpush.setVapidDetails('mailto:simong.aust@gmail.com', VAPID_PUBLIC_KEY, privateKey);
+const REPORT_HISTORY_KEEP = 8;
+const LEGACY_FIELDS = ['cards', 'history', 'feed', 'feedMeta', 'hashes', 'date', 'cardsDay'];
 
 const log = (...a) => console.log(...a);
+
+const privateKey = readFileSync(join(homedir(), '.config/teamlift/vapid-private.key'), 'utf8').trim();
+webpush.setVapidDetails('mailto:simong.aust@gmail.com', VAPID_PUBLIC_KEY, privateKey);
 
 async function sendPush(user, payload) {
   const sub = { endpoint: user.push.endpoint, keys: user.push.keys };
@@ -62,12 +73,12 @@ async function sendPush(user, payload) {
 }
 
 async function patch(docPath, obj, paths) {
+  if (paths.length === 0) return;
   if (DRY) { log(`[dry-run] PATCH ${docPath} mask=[${paths.join(', ')}]`, JSON.stringify(obj)); return; }
   await patchDoc(docPath, obj, paths);
 }
 
-// groupFeedByDay sorts on numeric updatedAt; REST gives ISO strings — keep
-// string updatedAt on entries for feedMeta / scanAt comparisons.
+// groupFeedByDay sorts on numeric updatedAt; REST gives ISO strings.
 function withMillis(entries) {
   return entries.map(e => ({
     ...e,
@@ -78,13 +89,27 @@ function withMillis(entries) {
 async function main() {
   const today = todayStr();
   const now = new Date();
-  const nowIso = now.toISOString();
+  // Stamped BEFORE the model call and used for threadScanAt / lastAidenAt, so
+  // comments that arrive mid-call are picked up next tick rather than skipped.
+  const startedIso = now.toISOString();
 
-  const [users, entries, banter, pushState, challengeCfg] = await Promise.all([
+  // ---- 1. cheap probe: two document reads ---------------------------------
+  const [banter, pushState] = await Promise.all([
+    fetchDoc('config/banter'),
+    fetchDoc('config/push')
+  ]);
+  const probe = probeWork({ banter, pushState, now, today });
+
+  if (!probe.needsFullFetch && !TEST_USER) {
+    // The wrapper suppresses logging for runs that print only this.
+    log('idle');
+    return;
+  }
+
+  // ---- 2. full state ------------------------------------------------------
+  const [users, entries, challengeCfg] = await Promise.all([
     fetchCollection('users'),
     fetchCollection('entries'),
-    fetchDoc('config/banter'),
-    fetchDoc('config/push'),
     fetchDoc('config/challenge')
   ]);
   if (users.length === 0) { console.error('empty roster (fetch failure?) - aborting'); process.exit(1); }
@@ -96,169 +121,107 @@ async function main() {
     process.exit(ok ? 0 : 1);
   }
 
-  const hashes = computeHashes(users, entries, today);
-  const hashChanged = changedSections(hashes, banter?.hashes);
-  // Card parents only on daily refresh — never mid-day hash chase (stale-copy bug).
-  const dailyCardRefresh = needsDailyCardRefresh(banter?.cardsDay, today, now);
-  const sections = [];
-  if (dailyCardRefresh) sections.push(...CARD_TARGETS);
-  if (hashChanged.includes('feed')) sections.push('feed');
-
   const feedIds = groupFeedByDay(withMillis(entries), today, 12).flatMap(g => g.items.map(i => i.id));
-  let threads = purgeStaleFeedThreads(banter?.threads || {}, { today, feedIds });
-  let memory = trimMemory(banter?.memory || []);
 
-  if (dailyCardRefresh) {
-    const digest = digestCardThreads(threads, banter?.cardsDay || today);
+  // Threads as they should look before Aiden speaks: stale feed threads dropped,
+  // and on the daily path the report thread digested into memory then wiped.
+  const buildThreads = (raw) => {
+    let t = purgeStaleFeedThreads(raw || {}, { today });
+    if (probe.wantReport) t = wipeCardThreads(t);
+    return t;
+  };
+  const threads = buildThreads(banter?.threads);
+
+  let memory = trimMemory(banter?.memory || []);
+  if (probe.wantReport) {
+    const digest = digestCardThreads(banter?.threads || {}, banter?.reportDay || today);
     if (digest) memory = trimMemory([...memory, digest]);
-    threads = wipeCardThreads(threads);
-    log(`daily card refresh: cardsDay ${banter?.cardsDay ?? '(none)'} -> ${today}`);
+    log(`daily report due: reportDay ${banter?.reportDay ?? '(none)'} -> ${today}` +
+        `${digest ? ` (digested ${digest.lines.length} comment lines to memory)` : ''}`);
   }
 
-  const threadJobs = collectThreadJobs({
-    threads,
-    entries,
-    today,
-    scanAt: banter?.threadScanAt || null,
-    feedIds
-  });
-
+  const threadJobs = collectThreadJobs({ threads, entries, today, feedIds });
   const work = decidePushWork({ users, entries, pushState, now, today });
-  log(`sections=[${sections.join(',')}] threads=${threadJobs.length} ` +
-      `morningDue=${work.morningDue}(${work.morning.length}) ` +
-      `eveningDue=${work.eveningDue}(${work.evening.length}) skipMorning=${work.skipMorning} ` +
-      `dailyCards=${dailyCardRefresh}`);
+
+  log(`report=${probe.wantReport} threads=${threadJobs.length}` +
+      `(${threadJobs.map(j => j.kind).join(',')}) ` +
+      `morning=${work.morning.length} evening=${work.evening.length} ` +
+      `probe=${probe.unseenComment ? 'comment' : probe.scanStale ? 'staleScan' : 'time'}`);
 
   const pushStatePatch = {};
   if ((work.morningDue && work.morning.length === 0) || work.skipMorning) pushStatePatch.lastMorning = today;
   if (work.eveningDue && work.evening.length === 0) pushStatePatch.lastEvening = today;
 
-  const needCopy = sections.length > 0 || threadJobs.length > 0 ||
+  const needCopy = probe.wantReport || threadJobs.length > 0 ||
     work.morning.length > 0 || work.evening.length > 0;
 
-  // Always keep banter date + threadScanAt fresh; sync card hashes on quiet ticks
-  // so mid-day data drift does not reappear as "changed" forever.
   if (!needCopy) {
-    log('no copy needed - bumping date/scan + syncing hashes');
-    const quiet = {
-      date: today,
-      threadScanAt: nowIso,
-      hashes,
-      threads
-    };
-    const paths = ['date', 'threadScanAt', 'hashes.weight', 'hashes.steps', 'hashes.workouts', 'hashes.feed', 'threads'];
-    if (dailyCardRefresh) {
-      // Should not happen without needCopy if daily forces sections — belt and braces.
-      quiet.cardsDay = today;
-      quiet.memory = memory;
-      paths.push('cardsDay', 'memory');
-    }
-    await patch('config/banter', quiet, paths);
+    // Woke up for a stale-scan sweep and found nothing. Bump the scan marker so
+    // the probe goes quiet again, and flush any thread purge.
+    const plan = threadWritePlan(banter?.threads || {}, threads);
+    await writeBanter({ threadScanAt: startedIso }, ['threadScanAt'], plan);
     if (Object.keys(pushStatePatch).length) {
       await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
     }
+    log('nothing to write beyond scan marker');
     return;
   }
 
-  const workdir = mkdtempSync(join(tmpdir(), 'teamlift-'));
-  let copy;
-  try {
-    // Pass banter with post-wipe threads so context matches what we will write.
-    const banterForCtx = { ...banter, threads, memory };
-    const context = buildContext({
-      users,
-      entries,
-      banter: banterForCtx,
-      challengeStart: challengeCfg?.startDate ?? today,
-      changed: sections,
-      morning: work.morning,
-      evening: work.evening,
-      today,
-      threadJobs,
-      dailyCardRefresh
-    });
-    writeFileSync(join(workdir, 'context.json'), JSON.stringify(context, null, 2));
-    log(`invoking claude (sonnet) for sections=[${sections.join(',')}] ` +
-        `threads=${threadJobs.map(j => j.target).join(',')} pushes=${context.pushes.length}`);
-    // Wake ticks can pile daily cards + feed + threads + morning pushes into
-    // one Claude job. 30 turns was too tight once the copywriter skill grew
-    // (locker-room bank) and the model spent turns re-reading context.
-    execFileSync('claude', [
-      '-p', `/copywriter ${workdir}`,
-      '--model', 'sonnet',
-      '--allowedTools', 'Read', 'Write',
-      '--max-turns', '60'
-    ], { cwd: REPO, stdio: 'inherit', timeout: 600_000 });
-    copy = JSON.parse(readFileSync(join(workdir, 'copy.json'), 'utf8'));
-    const verdict = validateCopy(copy, context);
-    if (!verdict.ok) {
-      console.error('copy rejected:\n  ' + verdict.errors.join('\n  '));
-      process.exit(1);
-    }
-    if (verdict.missingFeed?.length) {
-      log(`partial feed: missing ${verdict.missingFeed.join(',')} - leaving hashes.feed stale for next tick`);
-    }
-    // Stash so the apply step can leave feed hash unadvanced when incomplete.
-    copy.__missingFeed = verdict.missingFeed || [];
-  } finally {
-    rmSync(workdir, { recursive: true, force: true });
+  // ---- 3. one model call --------------------------------------------------
+  const context = buildContext({
+    users,
+    entries,
+    banter: { ...banter, threads, memory },
+    challengeStart: challengeCfg?.startDate ?? today,
+    today,
+    wantReport: probe.wantReport,
+    threadJobs,
+    morning: work.morning,
+    evening: work.evening
+  });
+  log(`calling ${backendName()} backend (${MODEL}) for jobs=[${context.jobs.join(',')}] ` +
+      `contextBytes=${JSON.stringify(context).length}`);
+
+  const { copy, backend, ms } = await generateCopy(context, { log });
+  const verdict = validateCopy(copy, context);
+  if (!verdict.ok) {
+    console.error(`copy rejected (${backend}, ${ms}ms):\n  ` + verdict.errors.join('\n  '));
+    process.exit(1);
+  }
+  log(`copy ok via ${backend} in ${ms}ms`);
+
+  // ---- 4. merge against fresh state and write ------------------------------
+  const fresh = DRY ? banter : await fetchDoc('config/banter');
+  let nextThreads = buildThreads(fresh?.threads);
+  const replies = Object.fromEntries(
+    (copy.threadReplies || []).map(r => [r.target, r.text])
+  );
+  if (Object.keys(replies).length) {
+    // lastAidenAt = startedIso (pre-call) so mid-call comments stay pending.
+    nextThreads = applyThreadReplies(nextThreads, replies, new Date().toISOString(), startedIso);
+  }
+  const plan = threadWritePlan(fresh?.threads || {}, nextThreads);
+
+  const obj = { threadScanAt: startedIso, memory };
+  const paths = ['threadScanAt', 'memory'];
+
+  const report = (copy.report || '').trim();
+  if (probe.wantReport && report) {
+    obj.report = { day: today, text: report };
+    obj.reportDay = today;
+    obj.reportHistory = [...(fresh?.reportHistory ?? banter?.reportHistory ?? []), report]
+      .slice(-REPORT_HISTORY_KEEP);
+    paths.push('report', 'reportDay', 'reportHistory');
   }
 
-  // Merge Aiden thread replies into the in-memory threads map.
-  if (copy.threadReplies && Object.keys(copy.threadReplies).length) {
-    threads = applyThreadReplies(threads, copy.threadReplies, nowIso);
-  }
+  await writeBanter(obj, paths, plan);
+  log(`banter written: report=${Boolean(obj.report)} ` +
+      `threadSets=[${Object.keys(plan.sets).join(',')}] threadDeletes=[${plan.deletes.join(',')}]`);
 
-  const missingFeed = copy.__missingFeed || [];
-  const feedComplete = missingFeed.length === 0;
-  // If Claude skipped any feedNeeds lines, do not advance hashes.feed or the
-  // next tick thinks feed is done and those lines never regenerate.
-  const hashesToWrite = feedComplete
-    ? hashes
-    : { ...hashes, feed: banter?.hashes?.feed ?? '' };
+  await dropLegacyFields(fresh ?? banter);
 
-  const obj = {
-    date: today,
-    threadScanAt: nowIso,
-    hashes: hashesToWrite,
-    threads,
-    memory
-  };
-  const paths = [
-    'date', 'threadScanAt', 'threads', 'memory',
-    'hashes.weight', 'hashes.steps', 'hashes.workouts', 'hashes.feed'
-  ];
-
-  if (dailyCardRefresh) {
-    obj.cardsDay = today;
-    paths.push('cardsDay');
-  }
-
-  const cardSections = sections.filter(s => s !== 'feed' && copy.cards?.[s]);
-  if (cardSections.length) {
-    obj.cards = Object.fromEntries(cardSections.map(s => [s, copy.cards[s]]));
-    paths.push(...cardSections.map(s => maskPath('cards', s)));
-    obj.history = [...(banter?.history ?? []),
-      { ts: today, sections, cards: obj.cards }].slice(-8);
-    paths.push('history');
-  }
-
-  const feedIdsWritten = Object.keys(copy.feed ?? {});
-  if (feedIdsWritten.length) {
-    // feedMeta must match entry.updatedAt strings used in buildContext feedNeeds.
-    const rawMeta = new Map(entries.map(e => [e.id, e.updatedAt ?? '']));
-    obj.feed = copy.feed;
-    obj.feedMeta = Object.fromEntries(feedIdsWritten.map(id => [id, rawMeta.get(id) ?? '']));
-    paths.push(...feedIdsWritten.map(id => maskPath('feed', id)));
-    paths.push(...feedIdsWritten.map(id => maskPath('feedMeta', id)));
-  }
-
-  await patch('config/banter', obj, paths);
-  log(`banter updated: cards=[${cardSections.join(',')}] feedLines=${feedIdsWritten.length}` +
-      `${missingFeed.length ? ` (incomplete, ${missingFeed.length} pending)` : ''} ` +
-      `threadReplies=${Object.keys(copy.threadReplies || {}).length}`);
-
-  const copyFor = (u, kind) => copy.pushes.find(p => p.userId === u.id && p.kind === kind);
+  // ---- 5. pushes ----------------------------------------------------------
+  const copyFor = (u, kind) => (copy.pushes || []).find(p => p.userId === u.id && p.kind === kind);
   for (const [kind, targets, stamp] of [
     ['morning', work.morning, 'lastMorning'],
     ['evening', work.evening, 'lastEvening']
@@ -269,12 +232,38 @@ async function main() {
       return sendPush(u, { title: p.title, body: p.body });
     }));
     if (results.every(Boolean)) pushStatePatch[stamp] = today;
-    else log(`${kind}: some sends failed - will retry next hour`);
+    else log(`${kind}: some sends failed - will retry next tick`);
   }
   if (Object.keys(pushStatePatch).length) {
     await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
   }
   log('tick complete');
+}
+
+/**
+ * One PATCH for config/banter. Thread keys are written individually; keys in
+ * the mask but absent from the body are deleted by Firestore, which is how
+ * purged and wiped threads disappear without touching the rest of the map.
+ */
+async function writeBanter(obj, paths, plan) {
+  const body = { ...obj };
+  const mask = [...paths];
+  if (Object.keys(plan.sets).length) body.threads = plan.sets;
+  for (const key of Object.keys(plan.sets)) mask.push(maskPath('threads', key));
+  for (const key of plan.deletes) mask.push(maskPath('threads', key));
+  await patch('config/banter', body, mask);
+}
+
+/**
+ * One-time cleanup of the pre-2026-07-26 fields. `feed`/`feedMeta` alone were
+ * 110 dead AI feed lines (~21 KB) that every client re-downloaded on every
+ * change to the doc, in a document with a 1 MiB ceiling.
+ */
+async function dropLegacyFields(doc) {
+  const present = LEGACY_FIELDS.filter(f => doc && f in doc);
+  if (present.length === 0) return;
+  log(`dropping legacy config/banter fields: ${present.join(', ')}`);
+  await patch('config/banter', {}, present);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

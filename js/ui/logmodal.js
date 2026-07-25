@@ -1,6 +1,6 @@
 import { saveEntry } from '../firebase.js';
 import { state } from '../state.js';
-import { todayStr } from '../lib/dates.js';
+import { todayStr, dayOptions } from '../lib/dates.js';
 import { WORKOUT_PARTS } from '../config.js';
 import { esc } from '../lib/esc.js';
 
@@ -33,6 +33,16 @@ export function openLogModal(dateStr = todayStr()) {
       ${parts.has(p) ? 'border-accent bg-accent text-black' : 'border-edge bg-card text-neutral-300'}">
       ${p}</button>`;
 
+  // Collapsed to just the chosen day when logging today (the overwhelmingly
+  // common case); one tap opens the other options.
+  const today = todayStr();
+  const days = dayOptions(dateStr, today);
+  const expanded = dateStr !== today;
+  const dayChip = (o) => `
+    <button type="button" data-date="${esc(o.date)}" class="day-chip rounded-full border px-4 py-2 text-sm font-bold
+      ${o.date === dateStr ? 'border-accent bg-accent text-black' : 'border-edge bg-card text-neutral-300'}">
+      ${esc(o.label)}</button>`;
+
   const modal = document.createElement('div');
   modal.id = 'log-modal';
   modal.className = 'sheet-backdrop fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70';
@@ -43,10 +53,17 @@ export function openLogModal(dateStr = todayStr()) {
         <h3 class="display text-2xl tracking-wide">LOG IT</h3>
         <button type="button" id="log-close" class="text-2xl text-neutral-500 px-2">✕</button>
       </div>
-      <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Date
-        <input id="log-date" type="date" value="${esc(dateStr)}" max="${todayStr()}"
-          class="rounded-xl bg-ink border border-edge px-4 py-3 text-lg text-neutral-100">
-      </label>
+      <div class="flex flex-col gap-2">
+        <span class="text-sm font-bold text-neutral-400">Day</span>
+        <div id="log-days" class="flex flex-wrap gap-2" data-expanded="${expanded ? '1' : '0'}">
+          ${expanded
+            ? days.map(dayChip).join('')
+            : `${dayChip(days[0])}
+               <button type="button" id="log-days-more"
+                 class="rounded-full border border-edge bg-card px-4 py-2 text-sm font-bold text-neutral-300">
+                 Another day ▾</button>`}
+        </div>
+      </div>
       <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Weight (kg)
         <input id="log-weight" type="number" step="0.1" min="30" max="300" inputmode="decimal"
           value="${esc(existing?.weight ?? '')}" placeholder="—"
@@ -87,11 +104,25 @@ export function openLogModal(dateStr = todayStr()) {
     });
   });
 
-  // Reload prefill when the date changes.
-  modal.querySelector('#log-date').addEventListener('change', (ev) => {
-    close();
-    openLogModal(ev.target.value);
+  // Reveal the other days in place, no reopen (nothing typed is lost).
+  modal.querySelector('#log-days-more')?.addEventListener('click', () => {
+    const row = modal.querySelector('#log-days');
+    row.dataset.expanded = '1';
+    row.innerHTML = days.map(dayChip).join('');
+    bindDayChips();
   });
+
+  // Switching day reopens the sheet so weight/steps/parts prefill for that day.
+  function bindDayChips() {
+    modal.querySelectorAll('.day-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.date === dateStr) return;
+        close();
+        openLogModal(btn.dataset.date);
+      });
+    });
+  }
+  bindDayChips();
 
   modal.querySelector('#log-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -112,7 +143,7 @@ export function openLogModal(dateStr = todayStr()) {
     btn.disabled = true;
     btn.textContent = 'SAVING…';
     try {
-      await saveEntry(user.id, user.name, modal.querySelector('#log-date').value, fields);
+      await saveEntry(user.id, user.name, dateStr, fields);
       close();
     } catch (err) {
       console.error(err);

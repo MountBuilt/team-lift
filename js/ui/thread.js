@@ -3,7 +3,7 @@
 //
 // UX: no "Reply" chrome. Tap the parent text to expand + focus compose.
 // "N comments" only when N ≥ 1. Author bin on own messages only.
-import { writeBanterThreads } from '../firebase.js';
+import { writeBanterThread } from '../firebase.js';
 import { state } from '../state.js';
 import {
   commentCount, visibleMessages, appendUserMessage, deleteUserMessage, USER_MSG_MAX
@@ -120,10 +120,13 @@ async function sendMessage(target, text) {
     text: trimmed,
     at: new Date().toISOString()
   };
-  threads[target] = appendUserMessage(threads[target], msg);
+  const thread = appendUserMessage(threads[target], msg);
+  threads[target] = thread;
   // Optimistic local state so a slow write still shows the msg on next render.
   state.banter = { ...banter, threads };
-  await writeBanterThreads(threads);
+  // Scoped to this one thread key: two blokes commenting on different targets
+  // (or the tick writing a reply elsewhere) no longer clobber each other.
+  await writeBanterThread(target, thread);
 }
 
 async function removeMessage(target, messageId) {
@@ -133,10 +136,11 @@ async function removeMessage(target, messageId) {
   const threads = allThreads(banter);
   const { thread, changed } = deleteUserMessage(threads[target], messageId, me.id);
   if (!changed) return;
-  if (thread.messages.length === 0 && !thread.lastAidenAt) delete threads[target];
+  const emptied = thread.messages.length === 0 && !thread.lastAidenAt;
+  if (emptied) delete threads[target];
   else threads[target] = thread;
   state.banter = { ...banter, threads };
-  await writeBanterThreads(threads);
+  await writeBanterThread(target, emptied ? null : thread);
 }
 
 function bindPanel(panel, target) {

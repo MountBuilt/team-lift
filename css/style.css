@@ -70,6 +70,24 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: #a3a3a3;
 }
 
+/* Aiden's morning report: the hero copy, so it reads as prose rather than as a
+   card footnote. Roman, larger, brighter than .coach. */
+.report-card {
+  border-color: rgba(249, 115, 22, 0.28);
+  background:
+    linear-gradient(180deg, rgba(249, 115, 22, 0.07) 0%, rgba(249, 115, 22, 0) 60%),
+    var(--card, #171717);
+}
+.report-parent {
+  margin-top: 0.5rem;
+  padding: 0.2rem 0 0.2rem 0.85rem;
+  border-left: 3px solid var(--ember);
+  font-size: 0.95rem;
+  font-style: normal;
+  line-height: 1.55;
+  color: #e5e5e5;
+}
+
 /* ---- Aiden threads (crew banter-back under parents) ---- */
 .thread-wrap { margin-top: 0.25rem; }
 .thread-parent {

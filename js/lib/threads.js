@@ -106,6 +106,36 @@ export function aidenHasSpoken(thread) {
 }
 
 /**
+ * How long the UI claims Aiden is composing a reply. The tick runs every 60s
+ * and a reply takes ~20s, so a couple of minutes is the honest window; past
+ * that something is wrong (Mac asleep, tick failing) and pretending he is
+ * still typing is worse than going quiet.
+ */
+export const THINKING_WINDOW_MINUTES = 4;
+
+/**
+ * Should the UI show the "Aiden is typing" dots under this thread?
+ *
+ * True while a human message is waiting on a reply and is recent enough that
+ * one is plausibly coming. Only human-pending threads count: a proactive praise
+ * job is also "Aiden thinking", but nobody is sitting there waiting for it.
+ *
+ * `expiresInMs` lets the UI drop the dots on a timer instead of spinning
+ * forever when no reply arrives.
+ */
+export function aidenThinkingState(thread, now = new Date(), windowMinutes = THINKING_WINDOW_MINUTES) {
+  const quiet = { thinking: false, expiresInMs: 0 };
+  const pending = pendingForThread(thread).newUser;
+  if (pending.length === 0) return quiet;
+  const newest = pending.reduce((a, b) => ((a.at || '') > (b.at || '') ? a : b));
+  const at = Date.parse(newest.at || '');
+  if (!Number.isFinite(at)) return quiet;
+  const waited = Math.max(0, now.getTime() - at);
+  const remaining = windowMinutes * 60000 - waited;
+  return remaining > 0 ? { thinking: true, expiresInMs: remaining } : quiet;
+}
+
+/**
  * Pending Aiden work for one thread target.
  * User msgs with at > lastAidenAt (or any if never answered) and not deleted.
  * Soft-deletes Aiden already answered (at <= lastAidenAt) need a brief ack.

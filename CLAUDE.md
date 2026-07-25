@@ -53,12 +53,14 @@ behaviour (orchestrator, `config/banter` shape, `scripts/prompt/aiden.md`).
   charts and in the banter. The copywriter context carries `weightDelta` and
   never a raw weight, so the model cannot leak one; `findAbsoluteWeight()` in
   `scripts/lib/context.mjs` is a backstop.
-- Topical storylines (`scripts/storylines.mjs`): real-world banter fed from
-  the group chat. Each entry is `{ id, subject, until, note }` (`subject` = a
-  bloke's name or `'team'`, `until` = inclusive last-active `YYYY-MM-DD`).
-  `context.mjs` passes the active set to the copywriter, which weaves them in;
-  they expire on their own. To add one, edit the array. Same-day grace: nobody
-  is roasted for not-yet-logging today, and 1-2 empty days = rest
+- Topical storylines (`scripts/storylines.mjs`): real-world banter fed from the
+  group chat. `{ id, subject, added, note }` where `subject` is a bloke's name
+  or `'team'` and `added` is the day you fed it in. **It expires itself
+  `DEFAULT_DAYS` (3) later** — you never maintain an end date. `days` overrides
+  that, but reach for it rarely: the first two storylines carried hand-written
+  `until` dates, nobody moved them, and Aiden was still doing wagyu and
+  no-scales material a week after both had stopped being funny. Same-day grace:
+  nobody is roasted for not-yet-logging today, and 1-2 empty days = rest
   (`REST_GRACE_DAYS`), 3+ = fair game.
 - Daily challenge (`js/lib/challenge.js`): one bodyweight exercise per day,
   a pure function of the date (no backend state), reps ramp weekly from the
@@ -114,13 +116,28 @@ Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
   there is nothing to do; only then does it fetch users + entries. Clients stamp
   `config/banter.pendingAt` (`pokeAiden()`) so a comment or a log wakes Aiden
   within a minute or two. Don't add per-tick work that needs a full fetch.
-- **Copy backend:** `scripts/lib/copywriter.mjs`. API key at
-  `~/.config/teamlift/anthropic-key` → Messages API (~3-6s, needed for live
-  replies). Otherwise `claude -p` on the Pro subscription (~88s, free).
-- **Voice guide:** `scripts/prompt/aiden.md`. Keep it principles-first. The old
-  394-line skill with its bank of numbered joke shapes and 40-row nickname table
-  made the copy MORE formulaic, because the model picked from the list instead
-  of reacting to the data. Don't rebuild it.
+- **Aiden-is-typing dots.** `aidenThinkingState()` drives a 3-dot indicator in
+  the thread while a comment waits on a reply, so the crew waits instead of
+  assuming they were ignored. It gives up after `THINKING_WINDOW_MINUTES` so a
+  broken tick leaves a quiet thread, not Aiden typing forever.
+- **Copy backend:** `scripts/lib/copywriter.mjs`, runs on the **Pro
+  subscription** via `claude -p` (no per-token bill). ~16-20s for a thread
+  reply, ~60-90s for the daily report. Two things keep that fast and are load
+  bearing: **stdin closed** (else a 3s wait for input that never comes) and
+  **cwd off-repo** (else Claude Code loads CLAUDE.md and `.claude/` as context:
+  38.6s vs 17.4s on the same prompt). An API key at
+  `~/.config/teamlift/anthropic-key` switches to the Messages API (~5s) but is
+  metered; we deliberately stay on Pro.
+- **Voice guide:** `scripts/prompt/aiden.md`. Two things it must keep:
+  - The **locker-room register** (soft-sexist harden-up, innuendo, camp) with a
+    few calibration examples. This is wanted, not tolerated. It was cut once
+    during a prompt slim and the copy immediately went flat.
+  - The rule that a report which is only a standings recap has **failed** —
+    without it the model writes accurate scoreboard prose and no jokes.
+  What it must NOT grow back into is the old 394-line, 28.8 KB skill: a bank of
+  24 numbered joke shapes plus a 40-row nickname table made the copy MORE
+  formulaic, because the model worked through the list instead of reacting to
+  the data. Examples to calibrate voice, yes; a menu to rotate, no.
 - Pure helpers: `js/lib/threads.js`, `js/lib/report.js` (+ tests).
   Orchestrator: `scripts/orchestrator.mjs`. Context/validate:
   `scripts/lib/context.mjs`.

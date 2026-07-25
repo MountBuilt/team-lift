@@ -4,6 +4,7 @@ import {
   needsDailyReport, visibleMessages, commentCount, thisWeekStandings,
   isCommentWorthy, aidenHasSpoken, pendingForThread, collectThreadJobs,
   digestCardThreads, wipeCardThreads, purgeStaleFeedThreads, applyThreadReplies,
+  aidenThinkingState,
   threadWritePlan, deleteUserMessage, appendUserMessage,
   CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, MAX_PROACTIVE_FEED
 } from '../js/lib/threads.js';
@@ -327,6 +328,61 @@ describe('collectThreadJobs', () => {
       threads: {}, entries, today: '2026-07-19', feedIds: ['u_2026-07-19']
     });
     assert.equal(jobs.length, 0);
+  });
+});
+
+describe('aidenThinkingState', () => {
+  const now = new Date('2026-07-19T10:00:00.000Z');
+  const userMsg = (at) => ({ id: 'u1', kind: 'user', userId: 's', name: 'Simon', text: 'oi', at });
+
+  it('says thinking while a fresh comment waits on a reply', () => {
+    const t = { lastAidenAt: null, messages: [userMsg('2026-07-19T09:59:30.000Z')] };
+    const s = aidenThinkingState(t, now);
+    assert.equal(s.thinking, true);
+    assert.ok(s.expiresInMs > 0);
+  });
+
+  it('goes quiet once Aiden has answered past the comment', () => {
+    const t = {
+      lastAidenAt: '2026-07-19T09:59:45.000Z',
+      messages: [
+        userMsg('2026-07-19T09:59:30.000Z'),
+        { id: 'a1', kind: 'aiden', name: 'Aiden', text: 'righto', at: '2026-07-19T09:59:50.000Z' }
+      ]
+    };
+    assert.equal(aidenThinkingState(t, now).thinking, false);
+  });
+
+  it('gives up rather than spinning forever when no reply arrives', () => {
+    const t = { lastAidenAt: null, messages: [userMsg('2026-07-19T09:50:00.000Z')] }; // 10 min ago
+    assert.equal(aidenThinkingState(t, now).thinking, false);
+  });
+
+  it('uses the newest pending comment as the clock', () => {
+    const t = {
+      lastAidenAt: null,
+      messages: [userMsg('2026-07-19T09:40:00.000Z'), userMsg('2026-07-19T09:59:50.000Z')]
+    };
+    assert.equal(aidenThinkingState(t, now).thinking, true);
+  });
+
+  it('ignores threads with no humans waiting, and junk timestamps', () => {
+    assert.equal(aidenThinkingState(undefined, now).thinking, false);
+    assert.equal(aidenThinkingState({ messages: [] }, now).thinking, false);
+    assert.equal(aidenThinkingState({
+      messages: [{ id: 'a', kind: 'aiden', text: 'x', at: '2026-07-19T09:59:00.000Z' }]
+    }, now).thinking, false);
+    assert.equal(aidenThinkingState({
+      lastAidenAt: null, messages: [userMsg('not-a-date')]
+    }, now).thinking, false);
+  });
+
+  it('does not count a deleted comment as waiting', () => {
+    const t = {
+      lastAidenAt: null,
+      messages: [{ ...userMsg('2026-07-19T09:59:30.000Z'), deleted: true }]
+    };
+    assert.equal(aidenThinkingState(t, now).thinking, false);
   });
 });
 

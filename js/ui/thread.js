@@ -6,7 +6,8 @@
 import { writeBanterThread } from '../firebase.js';
 import { state } from '../state.js';
 import {
-  commentCount, visibleMessages, appendUserMessage, deleteUserMessage, USER_MSG_MAX
+  commentCount, visibleMessages, appendUserMessage, deleteUserMessage,
+  aidenThinkingState, USER_MSG_MAX
 } from '../lib/threads.js';
 import { esc } from '../lib/esc.js';
 
@@ -58,14 +59,30 @@ function messageRowHtml(m, meId) {
     </div>`;
 }
 
+// "Aiden is typing" dots, shown while a comment is waiting on his reply so the
+// crew knows one is coming rather than assuming he ignored them. Aiden answers
+// on the tick (~20s of model time, up to a minute of waiting), which is long
+// enough that silence reads as broken.
+function typingHtml(target, thread) {
+  const { thinking } = aidenThinkingState(thread);
+  if (!thinking) return '';
+  return `
+    <div class="thread-typing" data-thread-typing="${esc(target)}" aria-live="polite">
+      <span class="thread-msg-name thread-aiden">Aiden</span>
+      <span class="typing-dots" role="img" aria-label="Aiden is typing"><i></i><i></i><i></i></span>
+    </div>`;
+}
+
 function panelHtml(target, banter, meId) {
-  const msgs = visibleMessages(threadOf(banter, target));
+  const thread = threadOf(banter, target);
+  const msgs = visibleMessages(thread);
   return `
     <div class="thread-list">
       ${msgs.map(m => messageRowHtml(m, meId).replace(
         'data-thread-target=""',
         `data-thread-target="${esc(target)}"`
       )).join('') || ''}
+      ${typingHtml(target, thread)}
     </div>
     <div class="thread-compose">
       <textarea class="thread-input" data-thread-input="${esc(target)}"
@@ -84,6 +101,7 @@ function expand(root, target, banter, meId, { focus = true } = {}) {
   const countBtn = root.querySelector(`.thread-count[data-thread-target="${CSS.escape(target)}"]`);
   countBtn?.setAttribute('aria-expanded', 'true');
   bindPanel(panel, target);
+
   if (focus) {
     const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
     input?.focus();
@@ -143,6 +161,25 @@ async function removeMessage(target, messageId) {
   await writeBanterThread(target, emptied ? null : thread);
 }
 
+/**
+ * Drop the typing dots when the window runs out, so a failed tick leaves a
+ * quiet thread rather than Aiden apparently typing forever. Firestore snapshots
+ * re-render the panel when his reply actually lands, which removes them sooner.
+ */
+function scheduleTypingClear(panel, target) {
+  clearTimeout(Number(panel.dataset.typingTimer) || 0);
+  const { thinking, expiresInMs } = aidenThinkingState(threadOf(state.banter, target));
+  if (!thinking) return;
+  panel.dataset.typingTimer = String(setTimeout(() => {
+    panel.querySelector(`[data-thread-typing="${CSS.escape(target)}"]`)?.remove();
+  }, expiresInMs));
+}
+
+function renderPanel(panel, target) {
+  panel.innerHTML = panelHtml(target, state.banter, state.currentUser?.id);
+  bindPanel(panel, target);
+}
+
 function bindPanel(panel, target) {
   const send = panel.querySelector(`[data-thread-send="${CSS.escape(target)}"]`);
   const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
@@ -152,12 +189,15 @@ function bindPanel(panel, target) {
     send.disabled = true;
     try {
       await sendMessage(target, text);
-      if (input) input.value = '';
+      // Repaint straight away so the message and the typing dots appear now,
+      // rather than waiting on the Firestore snapshot to come back.
+      renderPanel(panel, target);
     } catch (err) {
       console.error(err);
       send.disabled = false;
     }
   });
+  scheduleTypingClear(panel, target);
   input?.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();

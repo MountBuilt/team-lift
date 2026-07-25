@@ -1,23 +1,32 @@
 // Turns a context object into Aiden's copy. Owns the model call and nothing
-// else: no Firestore, no hashes, no sends.
+// else: no Firestore, no sends.
 //
 // Two backends, picked automatically:
 //
-//   api  (preferred)  Anthropic Messages API. One call, one turn, structured
-//                     output, ~3-6s. This is what makes near-live thread
-//                     replies possible. Needs a key (see KEY_FILE below) and
-//                     bills to your Anthropic account.
-//   cli  (fallback)   `claude -p` on the Claude Pro subscription via
-//                     CLAUDE_CODE_OAUTH_TOKEN. No per-token bill, but it spins
-//                     up a whole agent per call, so it is slow (30s-3min) and
-//                     eats subscription limits. Used when no API key is found.
+//   cli  (default)   `claude -p` on the Claude Pro subscription via
+//                    CLAUDE_CODE_OAUTH_TOKEN. No per-token bill. ~17s for a
+//                    thread reply, which with a 60s tick is responsive enough
+//                    to feel live.
+//   api  (optional)  Anthropic Messages API, used only if a key is present at
+//                    KEY_FILE. One turn, schema-constrained output, ~5s, but
+//                    metered against an Anthropic account.
 //
-// The old pipeline shelled out to `claude -p /copywriter <dir>`, which loaded
-// the Claude Code system prompt, the project CLAUDE.md, a 28.8 KB skill file
-// and an agentic loop of up to 60 turns to emit one sentence.
+// TWO THINGS KEEP THE CLI PATH FAST. Measured, do not remove:
+//
+//   * stdin: 'ignore'. Without it the CLI waits 3s for piped input it will
+//     never get, and prints a warning.
+//   * cwd outside the repo. Run from the project root and Claude Code
+//     discovers and loads CLAUDE.md plus the .claude directory as context,
+//     which more than doubled the call (38.6s -> 17.4s on the same prompt).
+//     Nothing here needs repo context: the whole job is in the prompt.
+//
+// For reference, the pipeline this replaced shelled out to
+// `claude -p /copywriter <dir>` from the repo root, which loaded the Claude
+// Code system prompt, CLAUDE.md, a 28.8 KB skill file and an agentic loop of up
+// to 60 turns to emit one sentence. That measured 88s.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { copySchema } from './context.mjs';
@@ -114,7 +123,6 @@ async function viaApi(context, log) {
 }
 
 function viaCli(context, log) {
-  log('no API key found, falling back to `claude -p` on the Pro subscription (slower)');
   const prompt = [
     readPrompt(),
     '',
@@ -132,8 +140,13 @@ function viaCli(context, log) {
   const out = execFileSync('claude', ['-p', prompt, '--model', 'sonnet'], {
     encoding: 'utf8',
     timeout: 300_000,
-    maxBuffer: 8 * 1024 * 1024
+    maxBuffer: 8 * 1024 * 1024,
+    // stdin closed: else the CLI waits 3s for input that never comes.
+    // cwd off-repo: keeps CLAUDE.md and .claude/ out of the context.
+    stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: tmpdir()
   });
+  log(`cli prompt bytes=${prompt.length}`);
   return extractJson(out);
 }
 

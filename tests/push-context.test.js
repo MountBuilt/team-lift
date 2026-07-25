@@ -91,9 +91,11 @@ test('buildContext: yesterday is withheld when no report is wanted', () => {
   assert.deepEqual(ctx.jobs, []);
 });
 
-test('buildContext: includes active storylines and the grace rules', () => {
-  const ctx = buildContext(base); // today 2026-07-13, seeded storylines run to 07-25
-  assert.ok(Array.isArray(ctx.storylines) && ctx.storylines.length >= 1);
+test('buildContext: passes only live storylines, plus the grace rules', () => {
+  const ctx = buildContext(base);
+  // The shipped list is deliberately empty (see tests/storylines.test.js);
+  // assert the shape and the filtering, not a count.
+  assert.ok(Array.isArray(ctx.storylines));
   for (const s of ctx.storylines) {
     assert.ok(s.id && s.subject && s.until && s.note);
     assert.ok(s.until >= ctx.today, 'only active storylines are passed through');

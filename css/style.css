@@ -149,6 +149,33 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   cursor: pointer;
 }
 .thread-del:hover { opacity: 1; }
+
+/* "Aiden is typing" — shown while a comment is waiting on his reply, so the
+   crew waits instead of assuming he ignored them. See aidenThinkingState(). */
+.thread-typing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0 0.15rem;
+}
+.typing-dots { display: inline-flex; gap: 3px; align-items: center; }
+.typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ember);
+  opacity: 0.35;
+  animation: typing-bounce 1.3s infinite ease-in-out;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.16s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.32s; }
+@keyframes typing-bounce {
+  0%, 75%, 100% { transform: translateY(0); opacity: 0.3; }
+  35% { transform: translateY(-3px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typing-dots i { animation: none; opacity: 0.6; }
+}
 .thread-compose {
   display: flex;
   align-items: flex-end;

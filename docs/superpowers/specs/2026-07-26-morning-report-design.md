@@ -36,6 +36,11 @@ The previous design worked but had three problems:
 | Thread replies | Aiden (same call) | within ~1-2 min of a comment or a big log | never |
 | Push copy | Aiden (same call) | 07:30 / 20:30 windows | n/a |
 
+While a comment is waiting on Aiden, the thread shows a 3-dot "Aiden is typing"
+indicator (`aidenThinkingState()`), so a ~20s to 1 minute wait reads as composing
+rather than ignoring. It stops after `THINKING_WINDOW_MINUTES`, because a broken
+tick should leave a quiet thread rather than Aiden apparently typing forever.
+
 ### Recent activity is template-only
 
 `js/ui/feed.js` always renders `feedLine(entry)`. No AI, no waiting, no
@@ -113,27 +118,61 @@ cannot stall Aiden forever.
 
 ### Copy backend
 
-`scripts/lib/copywriter.mjs` picks automatically:
+Runs on the **Claude Pro subscription** (`claude -p` via
+`CLAUDE_CODE_OAUTH_TOKEN`), no per-token bill. Measured: **~16-20s** for a
+thread reply, ~60-90s for the daily report. With a 60s tick that puts a reply in
+front of the crew inside a minute or two, which is what "live" needs to mean
+here.
 
-- `~/.config/teamlift/anthropic-key` present → **Messages API**, one turn,
-  structured output, ~3-6s. Required for replies to feel live. Metered.
-- otherwise → **`claude -p`** on the Pro subscription via
-  `CLAUDE_CODE_OAUTH_TOKEN`. No per-token bill, but it spins up an agent per
-  call: measured at 88s. Fine for the 3am report, too slow to feel live.
+Two settings in `viaCli()` are load bearing. Both were found by measurement:
 
-Model is one constant (`MODEL` in `copywriter.mjs`). Thinking is on for the
-report (nobody is waiting at 3am) and off for thread-only ticks (someone is).
+| | Effect |
+|---|---|
+| `stdio: ['ignore', ...]` | Without it the CLI waits 3s for piped input that never arrives, and warns. |
+| `cwd: tmpdir()` | Run from the repo root and Claude Code discovers and loads CLAUDE.md plus `.claude/` as context. **38.6s → 17.4s** on the same prompt. Nothing in this job needs repo context. |
+
+The original 88s figure was the report-plus-thread job with both of these wrong.
+
+An API key at `~/.config/teamlift/anthropic-key` switches to the Messages API
+(one turn, schema-constrained, ~5s) but bills per token. We deliberately stay on
+Pro; the API path is kept as an escape hatch only.
+
+Model is one constant (`MODEL` in `copywriter.mjs`).
+
+## Storylines forget themselves
+
+`scripts/storylines.mjs`. Feed a beat in as
+`{ id, subject, added: '<today>', note }` and it goes live on the next tick and
+expires `DEFAULT_DAYS` (3) later. There is no end date to maintain.
+
+This replaced hand-written `until` dates, which nobody moved: the first two
+storylines (Swifty's wagyu, Jon's missing scales) were still in every piece of
+copy a week after they stopped being funny. Three days is about how long a
+group-chat bit survives. `days` overrides it for a beat with real legs; use it
+sparingly, because a joke outliving the moment is exactly what makes the whole
+thing feel stale.
 
 ## Voice guide
 
 `scripts/prompt/aiden.md`, loaded as the system prompt. Replaced
 `.claude/skills/copywriter/SKILL.md` (394 lines, 28.8 KB), which is deleted.
 
-It carries principles, the grace rules, the job specs and the hard bans. It
-deliberately does **not** carry a bank of numbered joke shapes or a 40-row
-nickname table: those made the output more formulaic, because the model picked
-from the list instead of reacting to the data. Anti-repetition is driven by
-`previousReport`, `reportHistory` and `memory` instead.
+It carries principles, the register, the grace rules, the job specs and the hard
+bans. Two parts are load bearing and were both learned the hard way:
+
+- **The locker-room register** (soft-sexist harden-up, innuendo, camp/
+  shower-block) with a handful of calibration examples. This is wanted, not
+  merely tolerated. It got cut in the first pass at slimming the prompt and the
+  copy went flat immediately.
+- **"A report that is only a standings recap has failed."** Without that line
+  the model writes accurate scoreboard prose and no jokes. Measured: the same
+  context produced a flat recap before the line and a nicknamed sledge after.
+
+What it must not become again is a **bank**: 24 numbered joke shapes and a
+40-row nickname table made the output *more* formulaic, because the model worked
+through the list instead of reacting to the data. Examples to calibrate the
+voice, yes. A menu to rotate through, no. Anti-repetition comes from
+`previousReport`, `reportHistory` and `memory`.
 
 `memory` digests now store the **actual text** of what the crew said (truncated),
 not `"workouts: Simon bantered (2 msgs)"`. The old shape meant callbacks were

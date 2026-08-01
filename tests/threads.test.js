@@ -6,7 +6,7 @@ import {
   digestCardThreads, wipeCardThreads, purgeStaleFeedThreads, applyThreadReplies,
   aidenThinkingState,
   threadWritePlan, deleteUserMessage, appendUserMessage,
-  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, MAX_PROACTIVE_FEED
+  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX
 } from '../js/lib/threads.js';
 
 describe('needsDailyReport', () => {
@@ -244,17 +244,12 @@ describe('collectThreadJobs', () => {
     id, userId: id.split('_')[0], name: 'Dan', date, steps: 19000, ...extra
   });
 
-  it('opens a praise job for a fresh big log Aiden has not touched', () => {
-    // Proactive praise is back ON (2026-07-26): the feed parent is a local
-    // template now, so Aiden commenting under it is a reaction, not an echo.
+  it('never speaks under a log unprompted', () => {
+    // 2026-08-02: proactive praise removed. The feed line IS Aiden's voice, so
+    // an unprompted reply under it was him restating himself.
     const entries = [bigLog('u_2026-07-19', '2026-07-19')];
-    const jobs = collectThreadJobs({
-      threads: {}, entries, today: '2026-07-19', feedIds: ['u_2026-07-19']
-    });
-    assert.equal(jobs.length, 1);
-    assert.equal(jobs[0].kind, 'praise');
-    assert.equal(jobs[0].target, 'u_2026-07-19');
-    assert.equal(jobs[0].worthy.length, 1);
+    const jobs = collectThreadJobs({ threads: {}, entries, today: '2026-07-19' });
+    assert.equal(jobs.length, 0);
   });
 
   it('never re-fires once Aiden has spoken, even if the entry is re-edited', () => {
@@ -268,7 +263,7 @@ describe('collectThreadJobs', () => {
           messages: [{ id: 'a1', kind: 'aiden', name: 'Aiden', text: 'Unit.', at: '2026-07-19T05:00:00.000Z' }]
         }
       },
-      entries, today: '2026-07-19', feedIds: ['u_2026-07-19']
+      entries, today: '2026-07-19'
     });
     assert.equal(jobs.length, 0);
   });
@@ -276,18 +271,9 @@ describe('collectThreadJobs', () => {
   it('ignores logs older than yesterday', () => {
     const entries = [bigLog('u_2026-07-14', '2026-07-14')];
     const jobs = collectThreadJobs({
-      threads: {}, entries, today: '2026-07-19', feedIds: ['u_2026-07-14']
+      threads: {}, entries, today: '2026-07-19'
     });
     assert.equal(jobs.length, 0);
-  });
-
-  it('caps proactive praise per tick', () => {
-    const entries = Array.from({ length: MAX_PROACTIVE_FEED + 3 }, (_, i) =>
-      bigLog(`u${i}_2026-07-19`, '2026-07-19'));
-    const jobs = collectThreadJobs({
-      threads: {}, entries, today: '2026-07-19', feedIds: entries.map(e => e.id)
-    });
-    assert.equal(jobs.length, MAX_PROACTIVE_FEED);
   });
 
   it('opens a feed job when humans are pending, with worthy context attached', () => {
@@ -299,10 +285,10 @@ describe('collectThreadJobs', () => {
           messages: [{ id: '1', kind: 'user', name: 'Simon', text: 'beast', at: '2026-07-19T09:00:00.000Z' }]
         }
       },
-      entries, today: '2026-07-19', feedIds: ['u_2026-07-19']
+      entries, today: '2026-07-19'
     });
     assert.equal(jobs.length, 1);
-    assert.equal(jobs[0].kind, 'feed', 'a human-led thread is not downgraded to praise');
+    assert.equal(jobs[0].kind, 'feed', 'a human-led thread opens a feed job');
     assert.equal(jobs[0].newUser.length, 1);
     assert.equal(jobs[0].worthy.length, 1);
   });
@@ -325,7 +311,7 @@ describe('collectThreadJobs', () => {
   it('ignores a quiet log nobody is talking about', () => {
     const entries = [{ id: 'u_2026-07-19', userId: 'u', name: 'Dan', date: '2026-07-19', steps: 3000 }];
     const jobs = collectThreadJobs({
-      threads: {}, entries, today: '2026-07-19', feedIds: ['u_2026-07-19']
+      threads: {}, entries, today: '2026-07-19'
     });
     assert.equal(jobs.length, 0);
   });

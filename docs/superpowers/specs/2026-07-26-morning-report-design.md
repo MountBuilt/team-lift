@@ -54,15 +54,10 @@ lines to those pools. Do not put the AI back in the feed parent.
 
 ### Aiden reacts as a comment, not a rewrite
 
-`collectThreadJobs` opens a `praise` job when a bloke posts a comment-worthy log
-that Aiden has never replied to. This deliberately re-enables the proactive feed
-comments that were switched off on 2026-07-19 — that ban existed because the AI
-feed *parent* was Aiden's voice, so a thread reply repeated it. The parent is a
-template now, so a reply is a reaction rather than an echo.
-
-The old re-fire bug is prevented structurally: the gate is
-`aidenHasSpoken(thread)`, which an entry edit cannot undo. Capped at
-`MAX_PROACTIVE_FEED` per tick, today and yesterday only.
+Superseded 2026-08-02, see `2026-08-02-aiden-moods-design.md`: proactive
+`praise` jobs are removed. `collectThreadJobs` is human-led only. The feed
+parent is Aiden's own template line, so replying to it unprompted was him
+restating himself, and it read as canned.
 
 ### One report replaces three card parents
 

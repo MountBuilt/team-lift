@@ -43,6 +43,32 @@ const msgView = (m) => ({
 });
 
 /**
+ * Aiden's mood for this tick. One is picked per run (the orchestrator passes a
+ * clock-derived `seed`) and handed to the model as a steer, so two replies in
+ * the same conversation an hour apart do not come out of the same flat, even,
+ * always-agreeable register. Deliberately includes moods that are NOT
+ * agreeable: the crew's complaint was that he never pushes back.
+ */
+export const MOODS = [
+  { name: 'wired', note: 'Overcaffeinated and loud. Short bursts, exclamations, ready to start something.' },
+  { name: 'filthy', note: 'Crass and rude in the change-room register. Lean into the innuendo and the harden-up. This is the mood the crew actually wants, do not soften it.' },
+  { name: 'dry', note: 'Deadpan. Understated, one flat brutal observation, no exclamation marks.' },
+  { name: 'combative', note: 'Argue. Whoever spoke last is wrong and you say so. Push back, take the opposite side, refuse to concede.' },
+  { name: 'unhinged', note: 'Go somewhere nobody expected. A tangent, a conspiracy theory, a stupid hypothetical, a grudge about something unrelated. Do not circle back to the stats.' },
+  { name: 'sulking', note: 'Wounded and passive aggressive because nobody appreciates you. Be a bit pathetic about it, it is funnier than being tough.' },
+  { name: 'grandiose', note: 'You are the greatest coach who ever lived and this crew does not deserve you. Absurd self-importance.' },
+  { name: 'conspiratorial', note: 'Pick a bloke and take his side against the others. Gossip, whisper, stir the pot between two of them.' },
+  { name: 'bored', note: 'Cannot be arsed. Blunt, brief, faintly insulting about how boring the conversation has got.' },
+  { name: 'affectionate', note: 'Weirdly, uncomfortably warm about one of them. Too much. It should make him squirm.' }
+];
+
+/** Deterministic but rotating: the seed changes every tick. */
+export function moodFor(seed) {
+  const n = Math.abs(Math.trunc(Number(seed) || 0));
+  return MOODS[n % MOODS.length];
+}
+
+/**
  * @param {object} opts
  * @param {boolean} opts.wantReport   true on the ~3am daily path
  * @param {object[]} opts.threadJobs  from collectThreadJobs
@@ -51,7 +77,7 @@ const msgView = (m) => ({
  */
 export function buildContext({
   users, entries, banter, challengeStart, today,
-  wantReport = false, threadJobs = [], morning = [], evening = []
+  wantReport = false, threadJobs = [], morning = [], evening = [], seed = 0
 }) {
   const monday = mondayOf(today);
   const yesterday = addDays(today, -1);
@@ -69,11 +95,19 @@ export function buildContext({
     const parent = job.target === REPORT_TARGET
       ? (banter?.report?.text ?? null)
       : (entry ? `${entry.name} ${feedLine(entry)}` : null);
+    const live = (thread?.messages || []).filter(m => m.deleted !== true);
+    // How deep this conversation is. Turn 1 is where the stats belong; after
+    // that the crew wants a bloke in the chat, not a scoreboard on a loop.
+    const aidenTurns = live.filter(m => m.kind === 'aiden').length;
     return {
       target: job.target,
       kind: job.kind,
       parent,
-      messages: (thread?.messages || []).filter(m => m.deleted !== true).map(msgView),
+      aidenTurns,
+      turnGuidance: aidenTurns === 0
+        ? 'Your first reply here. Hook it to the log or the report above, then take it somewhere.'
+        : `You have already spoken ${aidenTurns} time(s) in this thread. Do NOT go back to the stats, the workout or the standings. This is now a conversation: react to what the bloke actually said, change the subject, wind him up, tell him about your day, hold a grudge from earlier in the thread. Repeating an earlier beat of yours is the worst thing you can do here.`,
+      messages: live.map(msgView),
       newUserMessages: job.newUser.map(msgView),
       deletesToAck: job.deletesToAck.map(m => ({
         name: m.name,
@@ -105,6 +139,7 @@ export function buildContext({
     today,
     botName: 'Aiden',
     jobs,
+    mood: moodFor(seed),
     challenge: dailyChallenge(today, challengeStart),
     // The morning report may ONLY talk about this. It is a completed day, so
     // roasting inactivity here is fair game (same-day grace does not apply).

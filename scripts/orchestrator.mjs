@@ -29,7 +29,6 @@ import { probeWork, decidePushWork } from './lib/decide.mjs';
 import { buildContext, validateCopy } from './lib/context.mjs';
 import { generateCopy, backendName, MODEL } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
-import { groupFeedByDay } from '../js/lib/aggregate.js';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
   applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET
@@ -78,14 +77,6 @@ async function patch(docPath, obj, paths) {
   await patchDoc(docPath, obj, paths);
 }
 
-// groupFeedByDay sorts on numeric updatedAt; REST gives ISO strings.
-function withMillis(entries) {
-  return entries.map(e => ({
-    ...e,
-    updatedAt: e.updatedAt ? Date.parse(e.updatedAt) || 0 : 0
-  }));
-}
-
 async function main() {
   const today = todayStr();
   const now = new Date();
@@ -121,8 +112,6 @@ async function main() {
     process.exit(ok ? 0 : 1);
   }
 
-  const feedIds = groupFeedByDay(withMillis(entries), today, 12).flatMap(g => g.items.map(i => i.id));
-
   // Threads as they should look before Aiden speaks: stale feed threads dropped,
   // and on the daily path the report thread digested into memory then wiped.
   const buildThreads = (raw) => {
@@ -140,7 +129,7 @@ async function main() {
         `${digest ? ` (digested ${digest.lines.length} comment lines to memory)` : ''}`);
   }
 
-  const threadJobs = collectThreadJobs({ threads, entries, today, feedIds });
+  const threadJobs = collectThreadJobs({ threads, entries, today });
   const work = decidePushWork({ users, entries, pushState, now, today });
 
   log(`report=${probe.wantReport} threads=${threadJobs.length}` +
@@ -177,8 +166,12 @@ async function main() {
     wantReport: probe.wantReport,
     threadJobs,
     morning: work.morning,
-    evening: work.evening
+    evening: work.evening,
+    // Minute-of-epoch: rotates Aiden's mood on every tick, so a thread that
+    // runs all evening does not get ten replies in the same register.
+    seed: Math.floor(now.getTime() / 60000)
   });
+  log(`mood=${context.mood.name}`);
   log(`calling ${backendName()} backend (${MODEL}) for jobs=[${context.jobs.join(',')}] ` +
       `contextBytes=${JSON.stringify(context).length}`);
 

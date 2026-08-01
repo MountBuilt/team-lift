@@ -15,6 +15,37 @@ import { esc } from '../lib/esc.js';
 // compose does not collapse when someone else logs a step.
 const expandedTargets = new Set();
 
+// A Firestore snapshot rebuilds the whole feed, which throws away the compose
+// box mid-sentence and drops the keyboard on mobile: you tapped, the keyboard
+// came up, the panel repainted under it and the chat looked like it had
+// closed, so you never saw Aiden's typing dots or his reply landing.
+// These two keep the compose alive across a repaint: the draft text is stashed
+// per target, and focus is handed back only if the bloke actually had the
+// input focused when the repaint hit.
+const drafts = new Map();
+let focusedTarget = null;
+
+function restoreCompose(panel, target) {
+  const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
+  if (!input) return;
+  const draft = drafts.get(target);
+  if (draft) input.value = draft;
+  input.addEventListener('input', () => {
+    if (input.value) drafts.set(target, input.value);
+    else drafts.delete(target);
+  });
+  input.addEventListener('focus', () => { focusedTarget = target; });
+  input.addEventListener('blur', () => {
+    // A repaint blurs the input by removing it from the document. Only a real
+    // user blur (element still on the page) means he is done typing.
+    if (input.isConnected && focusedTarget === target) focusedTarget = null;
+  });
+  if (focusedTarget === target) {
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+}
+
 function threadOf(banter, target) {
   return banter?.threads?.[target] || { messages: [], lastAidenAt: null };
 }
@@ -189,6 +220,8 @@ function bindPanel(panel, target) {
     send.disabled = true;
     try {
       await sendMessage(target, text);
+      drafts.delete(target);
+      if (input) input.value = '';
       // Repaint straight away so the message and the typing dots appear now,
       // rather than waiting on the Firestore snapshot to come back.
       renderPanel(panel, target);
@@ -198,6 +231,7 @@ function bindPanel(panel, target) {
     }
   });
   scheduleTypingClear(panel, target);
+  restoreCompose(panel, target);
   input?.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();

@@ -25,11 +25,6 @@ export const USER_MSG_MAX = 160;
 export const AIDEN_MSG_MAX = 240;
 export const FEED_THREAD_MAX_AGE_DAYS = 3;
 export const MEMORY_KEEP = 14;
-/** Proactive "nice work" comments Aiden may open per tick. Keeps a burst of
- *  logging from turning into a wall of bot chatter. */
-export const MAX_PROACTIVE_FEED = 3;
-/** Only today's and yesterday's logs earn a proactive reaction. */
-export const PROACTIVE_MAX_AGE_DAYS = 1;
 /** Local HH:MM — first tick at or after this with reportDay !== today writes it. */
 export const DAILY_REPORT_AFTER = '03:00';
 
@@ -155,19 +150,22 @@ export function pendingForThread(thread) {
 /**
  * Build the list of thread targets Aiden should answer this tick.
  *
- * Three sources, in priority order:
+ * Two sources, in priority order:
  *  1. Humans talking under the report parent.
  *  2. Humans talking under a feed line.
- *  3. Proactive praise on a fresh comment-worthy log that Aiden has never
- *     touched (capped at MAX_PROACTIVE_FEED, today/yesterday only).
+ *
+ * HUMAN-LED ONLY (2026-08-02). Proactive `praise` jobs used to open on any
+ * fresh comment-worthy log, so Aiden replied to a feed line he had effectively
+ * already written (the template feed line IS his voice) and just restated it.
+ * The crew read it as canned. Aiden now speaks under a log only when a human
+ * speaks first. Do not put unprompted feed reactions back.
  *
  * @param {object} opts
  * @param {object} opts.threads   config/banter.threads
  * @param {object[]} opts.entries  all entries (numeric or ISO updatedAt both fine)
  * @param {string} opts.today
- * @param {string[]} [opts.feedIds] ids currently rendered in Recent activity
  */
-export function collectThreadJobs({ threads, entries, today, feedIds }) {
+export function collectThreadJobs({ threads, entries, today }) {
   const monday = mondayOf(today);
   const tmap = threads || {};
   const list = entries || [];
@@ -203,28 +201,6 @@ export function collectThreadJobs({ threads, entries, today, feedIds }) {
       newUser: pending.newUser,
       deletesToAck: pending.deletesToAck,
       worthy: worthyFor(target)
-    });
-  }
-
-  // 3. Proactive praise, newest first, only where Aiden has never spoken.
-  const oldest = addDays(today, -PROACTIVE_MAX_AGE_DAYS);
-  const inFeed = new Set(feedIds || []);
-  const candidates = list
-    .filter(e => e?.id && e.date && e.date >= oldest && e.date <= today)
-    .filter(e => inFeed.size === 0 || inFeed.has(e.id))
-    .filter(e => !jobs.has(e.id))
-    .filter(e => !aidenHasSpoken(tmap[e.id]))
-    .filter(e => isCommentWorthy(e, list, monday))
-    .sort((a, b) => (a.date === b.date ? (a.id < b.id ? -1 : 1) : (a.date < b.date ? 1 : -1)))
-    .slice(0, MAX_PROACTIVE_FEED);
-
-  for (const e of candidates) {
-    jobs.set(e.id, {
-      target: e.id,
-      kind: 'praise',
-      newUser: [],
-      deletesToAck: [],
-      worthy: [e]
     });
   }
 

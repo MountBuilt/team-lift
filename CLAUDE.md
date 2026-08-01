@@ -86,11 +86,22 @@ Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
   logging, so it must never be rewritten after the fact. Freshness comes from
   widening the pools in `js/lib/banter.js`, not from the model. The seed is
   `userId|date`, so editing an entry keeps its line.
-- **Aiden reacts as a comment, never a rewrite.** A comment-worthy log gets a
-  `praise` thread reply (capped at `MAX_PROACTIVE_FEED` per tick, today and
-  yesterday only, gated on `aidenHasSpoken` so an entry edit can never re-fire
-  it). This intentionally re-enables what 2026-07-19 turned off; that ban only
-  made sense while the feed parent was AI-written.
+- **Aiden reacts as a comment, never a rewrite, and only when spoken to
+  (2026-08-02).** Proactive `praise` jobs are gone: the template feed line is
+  already Aiden's voice, so an unprompted reply under it was him restating
+  himself, which is exactly the "canned" feeling the crew called out.
+  `collectThreadJobs` is human-led only. Don't put unprompted feed reactions
+  back.
+- **Aiden has moods (2026-08-02).** `MOODS` in `scripts/lib/context.mjs`, one
+  picked per tick from `seed` (minute-of-epoch, passed by the orchestrator) and
+  handed over as `context.mood`. Several are deliberately not agreeable
+  (`combative`, `sulking`, `unhinged`, `filthy`) because the flat, even,
+  always-supportive register was the failure mode.
+- **Threads are conversations after turn 1.** `threadWork[].aidenTurns` and
+  `turnGuidance` tell the model how deep it is: turn 1 hooks to the log or the
+  report, every turn after that the stats are off the table and he is expected
+  to go off topic, push back and vary the shape. A 30-message thread of the
+  same beat is the bug this fixes.
 - **One morning report, not three card parents.** `config/banter.report`
   ({day, text}), 300-600 chars, covers **yesterday only** across weight,
   challenge, workouts and steps, with one thread (`target: 'report'`). Written

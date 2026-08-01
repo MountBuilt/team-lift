@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildContext, validateCopy, findAbsoluteWeight, copySchema, REPORT_MAX } from '../scripts/lib/context.mjs';
+import { buildContext, validateCopy, findAbsoluteWeight, copySchema, REPORT_MAX, MOODS } from '../scripts/lib/context.mjs';
 import { REPORT_TARGET } from '../js/lib/threads.js';
 
 const TODAY = '2026-07-13';
@@ -128,8 +128,8 @@ test('buildContext: threadWork carries the parent line so Aiden does not repeat 
       },
       {
         target: 'u1_2026-07-12',
-        kind: 'praise',
-        newUser: [],
+        kind: 'feed',
+        newUser: [{ id: 'm2', kind: 'user', name: 'Dave', text: 'weapon', at: 't' }],
         deletesToAck: [],
         worthy: [entries[0]]
       }
@@ -260,4 +260,43 @@ test('copySchema is a strict object schema with no dynamic keys', () => {
   assert.deepEqual(s.required.sort(), ['pushes', 'report', 'threadReplies']);
   assert.equal(s.properties.threadReplies.items.additionalProperties, false);
   assert.equal(s.properties.pushes.items.additionalProperties, false);
+});
+
+test('buildContext: mood rotates with the seed', () => {
+  const a = buildContext({ ...base, seed: 0 }).mood;
+  const b = buildContext({ ...base, seed: 1 }).mood;
+  assert.ok(a.name && a.note);
+  assert.notEqual(a.name, b.name);
+  assert.equal(buildContext({ ...base, seed: MOODS.length }).mood.name, a.name);
+});
+
+test('buildContext: turnGuidance takes the stats off the table after Aiden has spoken', () => {
+  const withHistory = (msgs) => buildContext({
+    ...base,
+    wantReport: false,
+    morning: [],
+    banter: {
+      ...base.banter,
+      threads: { [REPORT_TARGET]: { lastAidenAt: null, messages: msgs } }
+    },
+    threadJobs: [{
+      target: REPORT_TARGET,
+      kind: 'report',
+      newUser: [{ id: 'm9', kind: 'user', name: 'Simon', text: 'oi', at: 't' }],
+      deletesToAck: [],
+      worthy: []
+    }]
+  }).threadWork[0];
+
+  const first = withHistory([{ id: 'm9', kind: 'user', name: 'Simon', text: 'oi', at: 't' }]);
+  assert.equal(first.aidenTurns, 0);
+  assert.match(first.turnGuidance, /first reply/i);
+
+  const deep = withHistory([
+    { id: 'a1', kind: 'aiden', name: 'Aiden', text: 'righto', at: 't' },
+    { id: 'a2', kind: 'aiden', name: 'Aiden', text: 'again', at: 't' },
+    { id: 'm9', kind: 'user', name: 'Simon', text: 'oi', at: 't' }
+  ]);
+  assert.equal(deep.aidenTurns, 2);
+  assert.match(deep.turnGuidance, /Do NOT go back to the stats/);
 });

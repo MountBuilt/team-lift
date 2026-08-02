@@ -27,7 +27,7 @@ import webpush from 'web-push';
 import { fetchCollection, fetchDoc, patchDoc, maskPath } from './lib/firestore-rest.mjs';
 import { probeWork, decidePushWork } from './lib/decide.mjs';
 import { buildContext, validateCopy } from './lib/context.mjs';
-import { generateCopy, backendName, MODEL } from './lib/copywriter.mjs';
+import { generateCopy, backendName, modelFor } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
@@ -172,16 +172,17 @@ async function main() {
     seed: Math.floor(now.getTime() / 60000)
   });
   log(`mood=${context.mood.name}`);
-  log(`calling ${backendName()} backend (${MODEL}) for jobs=[${context.jobs.join(',')}] ` +
+  const backend = backendName();
+  log(`calling ${backend} backend (${modelFor(backend)}) for jobs=[${context.jobs.join(',')}] ` +
       `contextBytes=${JSON.stringify(context).length}`);
 
-  const { copy, backend, ms } = await generateCopy(context, { log });
+  const { copy, backend: usedBackend, model, ms } = await generateCopy(context, { log });
   const verdict = validateCopy(copy, context);
   if (!verdict.ok) {
-    console.error(`copy rejected (${backend}, ${ms}ms):\n  ` + verdict.errors.join('\n  '));
+    console.error(`copy rejected (${usedBackend}/${model}, ${ms}ms):\n  ` + verdict.errors.join('\n  '));
     process.exit(1);
   }
-  log(`copy ok via ${backend} in ${ms}ms`);
+  log(`copy ok via ${usedBackend} (${model}) in ${ms}ms`);
 
   // ---- 4. merge against fresh state and write ------------------------------
   const fresh = DRY ? banter : await fetchDoc('config/banter');

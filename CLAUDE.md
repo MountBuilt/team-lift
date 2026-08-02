@@ -131,14 +131,15 @@ Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
   the thread while a comment waits on a reply, so the crew waits instead of
   assuming they were ignored. It gives up after `THINKING_WINDOW_MINUTES` so a
   broken tick leaves a quiet thread, not Aiden typing forever.
-- **Copy backend:** `scripts/lib/copywriter.mjs`, runs on the **Pro
-  subscription** via `claude -p` (no per-token bill). ~16-20s for a thread
-  reply, ~60-90s for the daily report. Two things keep that fast and are load
-  bearing: **stdin closed** (else a 3s wait for input that never comes) and
-  **cwd off-repo** (else Claude Code loads CLAUDE.md and `.claude/` as context:
-  38.6s vs 17.4s on the same prompt). An API key at
-  `~/.config/teamlift/anthropic-key` switches to the Messages API (~5s) but is
-  metered; we deliberately stay on Pro.
+- **Copy backend:** `scripts/lib/copywriter.mjs`. Default is **SuperGrok**
+  via `grok -p` (Grok Build OAuth at `~/.grok/auth.json`, no console.x.ai
+  metered bill). Child env strips `XAI_API_KEY` so launchd cannot silently
+  burn API credits. Measured ~6s for a structured thread-shaped call.
+  Fallbacks: `claude -p` (Claude Pro), then Anthropic Messages API if
+  `~/.config/teamlift/anthropic-key` is set. Force with
+  `TEAM_LIFT_COPY_BACKEND=grok|claude|api`. Both CLI paths need **stdin
+  closed** and **cwd off-repo** (else the coding agent loads project
+  CLAUDE.md / AGENTS.md and the call more than doubles).
 - **Voice guide:** `scripts/prompt/aiden.md`. Two things it must keep:
   - The **locker-room register** (soft-sexist harden-up, innuendo, camp) with a
     few calibration examples. This is wanted, not tolerated. It was cut once

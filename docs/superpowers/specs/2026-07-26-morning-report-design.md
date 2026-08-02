@@ -113,26 +113,32 @@ cannot stall Aiden forever.
 
 ### Copy backend
 
-Runs on the **Claude Pro subscription** (`claude -p` via
-`CLAUDE_CODE_OAUTH_TOKEN`), no per-token bill. Measured: **~16-20s** for a
-thread reply, ~60-90s for the daily report. With a 60s tick that puts a reply in
-front of the crew inside a minute or two, which is what "live" needs to mean
-here.
+Default is **SuperGrok** via Grok Build headless (`grok -p`), authenticated
+with `~/.grok/auth.json` (`grok login`). No metered `console.x.ai` credits.
+The child process strips `XAI_API_KEY` / `GROK_API_KEY` so a shell that has an
+API key for other work cannot silently bill the banter tick. Measured
+**~6s** for a structured thread-shaped call (2026-08-02).
 
-Two settings in `viaCli()` are load bearing. Both were found by measurement:
+Fallbacks (automatic, or force with `TEAM_LIFT_COPY_BACKEND`):
+
+| Backend | When | Notes |
+|---|---|---|
+| `grok-cli` | default when `grok` + auth present | SuperGrok monthly sub |
+| `cli` | Claude fallback | `claude -p` on Pro, ~16-20s thread |
+| `api` | Anthropic key present | Messages API, metered escape hatch |
+
+Two settings on both CLI paths are load bearing. Measured on Claude; same
+discipline applies to Grok Build:
 
 | | Effect |
 |---|---|
-| `stdio: ['ignore', ...]` | Without it the CLI waits 3s for piped input that never arrives, and warns. |
-| `cwd: tmpdir()` | Run from the repo root and Claude Code discovers and loads CLAUDE.md plus `.claude/` as context. **38.6s → 17.4s** on the same prompt. Nothing in this job needs repo context. |
+| `stdio: ['ignore', ...]` | Without it the CLI waits for piped input that never arrives, and warns. |
+| `cwd: tmpdir()` | Run from the repo root and the coding agent loads CLAUDE.md / AGENTS.md / `.claude/` as context. **38.6s → 17.4s** on Claude for the same prompt. Nothing in this job needs repo context. |
 
-The original 88s figure was the report-plus-thread job with both of these wrong.
+The original 88s figure was the report-plus-thread job with both of these wrong
+on Claude.
 
-An API key at `~/.config/teamlift/anthropic-key` switches to the Messages API
-(one turn, schema-constrained, ~5s) but bills per token. We deliberately stay on
-Pro; the API path is kept as an escape hatch only.
-
-Model is one constant (`MODEL` in `copywriter.mjs`).
+Models live in `copywriter.mjs` (`GROK_MODEL`, `CLAUDE_MODEL`).
 
 ## Storylines forget themselves
 

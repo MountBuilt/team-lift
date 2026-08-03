@@ -1,5 +1,5 @@
 import {
-  teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks
+  teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks, userHasLogged
 } from '../lib/aggregate.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
@@ -8,7 +8,9 @@ import {
 } from '../lib/banter.js';
 import { templateReport, reportFresh } from '../lib/report.js';
 import { REPORT_TARGET } from '../lib/threads.js';
+import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
+import { pushSupported } from '../push.js';
 import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { runCountUps, burstFrom, compactNumber } from './fx.js';
@@ -124,6 +126,60 @@ function logNudgeHtml(state, today) {
         class="pressable w-full rounded-xl bg-accent py-3 display text-lg tracking-wide text-black active:bg-accentDim">
         LOG SOMETHING</button>
     </div>`;
+}
+
+function isIosLike() {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// One-time install + push coach. Dismiss persists in localStorage.
+function pushCoachHtml(state) {
+  const me = state.currentUser;
+  if (!me) return '';
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(PUSH_COACH_KEY) === '1'; } catch { /* private mode */ }
+  const show = shouldShowPushCoach({
+    dismissed,
+    pushEnabled: me.push?.enabled === true,
+    everLogged: userHasLogged(state.entries, me.id),
+    pushSupported: pushSupported()
+  });
+  if (!show) return '';
+  const installStep = isIosLike()
+    ? 'Share → Add to Home Screen'
+    : 'Browser menu → Install app / Add to Home screen';
+  const installed = pushSupported();
+  return `
+    <div class="flex flex-col gap-3">
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="eyebrow">Stay in the fight</h3>
+        <button type="button" id="push-coach-dismiss"
+          class="shrink-0 text-xs font-bold text-neutral-500 px-1" aria-label="Dismiss">
+          Got it</button>
+      </div>
+      <ol class="list-decimal pl-5 text-sm leading-relaxed text-neutral-300 space-y-1.5">
+        <li>${installed
+          ? 'App is installed. Nice.'
+          : esc(installStep)}</li>
+        <li>Open the <button type="button" id="push-coach-me"
+          class="font-black text-accent underline-offset-2 hover:underline">Me</button> tab</li>
+        <li>Turn on notifications so Aiden can nag you morning and night</li>
+      </ol>
+    </div>`;
+}
+
+// Chart empty states: banter voice + open the log sheet.
+function chartEmptyHtml(kind) {
+  const copy = kind === 'weight'
+    ? 'Nobody has hit the scales yet. Be the first trend, not a ghost.'
+    : 'No steps on the board. Walk the dog, walk the block, then log it.';
+  return `
+    <p class="text-sm text-neutral-400">${esc(copy)}</p>
+    <button type="button" data-log-empty
+      class="pressable mt-3 w-full rounded-xl border border-edge py-2.5 text-sm font-black text-accent">
+      LOG IT</button>`;
 }
 
 function tilesHtml(t) {
@@ -292,32 +348,38 @@ function bindGlobalWorkoutTooltipDismissal() {
   window.addEventListener('scroll', hideActiveWorkoutTooltip, true);
 }
 
-export function renderDashboard(container, state, { animate = false } = {}) {
+export function renderDashboard(container, state, {
+  animate = false,
+  onGoMe = null
+} = {}) {
   const c = state.challenge;
   const today = todayStr();
   const monday = mondayOf(today);
   const nudge = logNudgeHtml(state, today);
+  const coach = pushCoachHtml(state);
   let fx = 0;
   const nextFx = () => fx++;
 
+  // Phase 3 order: log/status first, charts last. One report card only.
   container.innerHTML = `
-    <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pb-28 pt-5">
+    <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pt-5 safe-bottom">
       ${headerHtml(c, today)}
       ${card(todayBoardHtml(state, today), nextFx())}
       ${nudge ? card(nudge, nextFx(), 'log-nudge-card border-accent/30') : ''}
+      ${coach ? card(coach, nextFx(), 'push-coach-card border-edge') : ''}
+      ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
       ${card(reportCard(state, today), nextFx(), 'report-card')}
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
-      ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
-      ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
-        <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>`, nextFx())}
       <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
         ${workoutsPanel(state, monday)}
       </section>
+      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, nextFx())}
+      ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
+        <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
+        <div id="weight-empty" class="hidden mt-2">${chartEmptyHtml('weight')}</div>`, nextFx())}
       ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>`, nextFx())}
-      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, nextFx())}
+        <div id="steps-empty" class="hidden mt-2">${chartEmptyHtml('steps')}</div>`, nextFx())}
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
@@ -326,6 +388,16 @@ export function renderDashboard(container, state, { animate = false } = {}) {
   if (animate) runCountUps(container);
 
   container.querySelector('#log-nudge-cta')?.addEventListener('click', () => openLogModal());
+  container.querySelectorAll('[data-log-empty]').forEach(btn =>
+    btn.addEventListener('click', () => openLogModal()));
+
+  container.querySelector('#push-coach-dismiss')?.addEventListener('click', () => {
+    try { localStorage.setItem(PUSH_COACH_KEY, '1'); } catch { /* ignore */ }
+    container.querySelector('.push-coach-card')?.remove();
+  });
+  container.querySelector('#push-coach-me')?.addEventListener('click', () => {
+    if (typeof onGoMe === 'function') onGoMe();
+  });
 
   // Tick today's challenge: confetti fires immediately, then the Firestore
   // snapshot re-render flips the card to the DONE stamp (instant with local

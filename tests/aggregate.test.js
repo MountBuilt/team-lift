@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
   workoutWeek, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay,
-  lastWeight
+  lastWeight, daysLoggedThisWeek, weeklySteps, userHasLogged
 } from '../js/lib/aggregate.js';
 
 const challenge = { title: 'Test', startDate: '2026-07-06', endDate: '2026-08-02' };
@@ -195,4 +195,43 @@ test('lastWeight returns most recent weigh-in for the user, or null', () => {
   assert.equal(lastWeight(entries, 'u1', '2026-07-15'), 92.5);
   assert.equal(lastWeight([], 'u1'), null);
   assert.equal(lastWeight(entries, 'nobody'), null);
+});
+
+
+test('daysLoggedThisWeek counts Mon-Sun days with hasAnyLog', () => {
+  // week of 2026-07-06 (Mon)
+  const monday = '2026-07-06';
+  const entries = [
+    e('u1', '2026-07-06', { steps: 1000 }),
+    e('u1', '2026-07-07', { weight: 90 }),
+    e('u1', '2026-07-08', { steps: 0 }), // not a log
+    e('u1', '2026-07-09', { dailyChallenge: true }),
+    e('u1', '2026-07-05', { steps: 9999 }), // prev week
+    e('u2', '2026-07-06', { steps: 5000 })
+  ];
+  assert.equal(daysLoggedThisWeek(entries, 'u1', monday), 3);
+  assert.equal(daysLoggedThisWeek(entries, 'u2', monday), 1);
+  assert.equal(daysLoggedThisWeek([], 'u1', monday), 0);
+});
+
+test('weeklySteps sums steps Mon-Sun for one user', () => {
+  const monday = '2026-07-06';
+  const entries = [
+    e('u1', '2026-07-06', { steps: 1000 }),
+    e('u1', '2026-07-07', { steps: 2500 }),
+    e('u1', '2026-07-08', { weight: 90 }),
+    e('u1', '2026-07-12', { steps: 400 }), // Sunday
+    e('u1', '2026-07-13', { steps: 9000 }), // next Mon
+    e('u2', '2026-07-06', { steps: 10000 })
+  ];
+  assert.equal(weeklySteps(entries, 'u1', monday), 3900);
+  assert.equal(weeklySteps(entries, 'u2', monday), 10000);
+  assert.equal(weeklySteps([], 'u1', monday), 0);
+});
+
+test('userHasLogged is true when any real field exists for the user', () => {
+  assert.equal(userHasLogged([e('u1', '2026-07-06', { steps: 1 })], 'u1'), true);
+  assert.equal(userHasLogged([e('u1', '2026-07-06', { steps: 0 })], 'u1'), false);
+  assert.equal(userHasLogged([e('u2', '2026-07-06', { steps: 1 })], 'u1'), false);
+  assert.equal(userHasLogged([], 'u1'), false);
 });

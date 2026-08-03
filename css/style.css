@@ -11,6 +11,11 @@ input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .modal-open { overflow: hidden; }
 
+/* FAB clearance + home-indicator safe area (Phase 3 polish). */
+.safe-bottom {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
 /* ---- Display face: Anton (self-hosted, OFL). Poster type for titles and
    big numbers only; body copy stays on the system stack. ---- */
 @font-face {

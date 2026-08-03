@@ -21,7 +21,14 @@ import { threadBlockHtml, bindThreads } from './thread.js';
 export function renderFeed(container, entries, users = [], banter = null) {
   const groups = groupFeedByDay(entries, todayStr(), 12);
   if (groups.length === 0) {
-    container.innerHTML = `<p class="text-neutral-500 text-sm">No entries yet. Be the first on the board!</p>`;
+    container.innerHTML = `
+      <p class="text-sm text-neutral-400">Dead quiet. Someone has to open the board, might as well be you.</p>
+      <button type="button" id="feed-empty-log"
+        class="pressable mt-3 w-full rounded-xl border border-edge py-2.5 text-sm font-black text-accent">
+        LOG SOMETHING</button>`;
+    container.querySelector('#feed-empty-log')?.addEventListener('click', () => {
+      import('./logmodal.js').then(m => m.openLogModal());
+    });
     return;
   }
   const colorOf = (e) => safeColor(users.find(u => u.id === e.userId)?.color, '#737373');

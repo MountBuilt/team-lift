@@ -1,5 +1,6 @@
 // Pure aggregation over entries/users/challenge. No Firebase, no DOM.
 import { addDays, dateRange, weekdayIndex, dayLabel } from './dates.js';
+import { hasAnyLog } from './banter.js';
 
 const hasWorkout = (entry) => Array.isArray(entry.workoutParts) && entry.workoutParts.length > 0;
 
@@ -95,6 +96,33 @@ export function workoutDots(entries, userId, mondayStr) {
 
 export function weeklyWorkoutCount(entries, userId, mondayStr) {
   return workoutDots(entries, userId, mondayStr).filter(Boolean).length;
+}
+
+/** Distinct Mon–Sun days where the user hasAnyLog (Me scoreboard). */
+export function daysLoggedThisWeek(entries, userId, mondayStr) {
+  const end = addDays(mondayStr, 6);
+  const days = new Set();
+  for (const e of entries || []) {
+    if (e.userId !== userId || e.date < mondayStr || e.date > end) continue;
+    if (hasAnyLog(e)) days.add(e.date);
+  }
+  return days.size;
+}
+
+/** Sum of steps Mon–Sun for one user (null/missing days count as 0). */
+export function weeklySteps(entries, userId, mondayStr) {
+  const end = addDays(mondayStr, 6);
+  let sum = 0;
+  for (const e of entries || []) {
+    if (e.userId !== userId || e.date < mondayStr || e.date > end) continue;
+    if (typeof e.steps === 'number') sum += e.steps;
+  }
+  return sum;
+}
+
+/** True if this user has ever logged a real field (install coach gate). */
+export function userHasLogged(entries, userId) {
+  return (entries || []).some(e => e.userId === userId && hasAnyLog(e));
 }
 
 export function streakWeeks(entries, userId, currentMondayStr) {

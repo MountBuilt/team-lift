@@ -285,9 +285,11 @@ Pure aggregation helpers in `js/lib/aggregate.js` (or thin wrappers) + tests if 
 
 ## 3.4 Visual polish pass (light)
 
-- Empty states: banter voice, clear CTA to log
-- Ensure new strips match heat/Anton system (no redesign)
-- Safe-area / FAB overlap check with new top content
+- [x] Empty states: banter voice, clear CTA to log
+- [x] Ensure new strips match heat/Anton system (no redesign)
+- [x] Safe-area / FAB overlap check with new top content
+
+**Shipped (agent):** dashboard reorder; Me scoreboard (`daysLoggedThisWeek`, `weeklySteps`, challenge streak); install/push coach (`js/lib/push-coach.js` + `tl_push_coach_dismissed`); empty-state CTAs.
 
 **Prod checklist:** fresh eyes scroll — challenge and log CTA above charts; Me shows streak/steps/days; install card once then gone; push still works on installed PWA.
 

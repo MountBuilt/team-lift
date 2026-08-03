@@ -46,7 +46,10 @@ function renderMain() {
       onLogout: () => { logout(); state.tab = 'dash'; lastShownTab = null; route(); }
     }, { animate });
   } else {
-    renderDashboard(view, state, { animate });
+    renderDashboard(view, state, {
+      animate,
+      onGoMe: () => { state.tab = 'me'; route(); }
+    });
   }
 }
 

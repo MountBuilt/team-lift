@@ -305,7 +305,8 @@ test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {
 test('feedLine covers a challenge-only entry (never the "logged... something" fallback)', () => {
   const entry = e('u1', '2026-07-10', { dailyChallenge: true, updatedAt: 5 });
   const line = feedLine(entry);
-  assert.ok(line.toLowerCase().includes('daily challenge'), line);
+  // Pools say "daily challenge" or just "challenge" — either is fine.
+  assert.ok(line.toLowerCase().includes('challenge'), line);
   assert.ok(!line.includes('logged... something'));
   assert.equal(feedLine(entry), line); // deterministic
 });

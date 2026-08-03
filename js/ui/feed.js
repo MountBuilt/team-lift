@@ -1,7 +1,12 @@
 import { groupFeedByDay } from '../lib/aggregate.js';
 import { feedLine, effortLabel, isBigEffort } from '../lib/banter.js';
+import {
+  REACTION_EMOJIS, reactionCounts, userReaction, toggleUserReaction
+} from '../lib/reactions.js';
 import { todayStr } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
+import { writeEntryReaction } from '../firebase.js';
+import { state } from '../state.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
 
 /**
@@ -16,6 +21,7 @@ import { threadBlockHtml, bindThreads } from './thread.js';
  * (70 of 110 stored lines mentioned the scales). Aiden now reacts as a COMMENT
  * in the thread underneath instead, which is additive and never rewrites.
  *
+ * Peer reactions (Phase 4) are client-only, stored on the entry doc.
  * `banter` is the full config/banter doc (threads live there).
  */
 export function renderFeed(container, entries, users = [], banter = null) {
@@ -31,7 +37,27 @@ export function renderFeed(container, entries, users = [], banter = null) {
     });
     return;
   }
+  const meId = state.currentUser?.id;
   const colorOf = (e) => safeColor(users.find(u => u.id === e.userId)?.color, '#737373');
+
+  const reactionsHtml = (e) => {
+    const reactions = e.reactions || {};
+    const counts = reactionCounts(reactions);
+    const mine = meId ? userReaction(reactions, meId) : null;
+    const btns = REACTION_EMOJIS.map(em => {
+      const n = counts[em] || 0;
+      const on = mine === em;
+      return `
+        <button type="button" class="react-btn ${on ? 'react-on' : ''}"
+          data-entry-id="${esc(e.id)}" data-emoji="${em}"
+          aria-label="React ${em}" aria-pressed="${on ? 'true' : 'false'}">
+          <span class="react-emoji">${em}</span>
+          ${n > 0 ? `<span class="react-n">${n}</span>` : ''}
+        </button>`;
+    }).join('');
+    return `<div class="react-row" data-reactions-for="${esc(e.id)}">${btns}</div>`;
+  };
+
   const row = (e) => {
     const color = colorOf(e);
     const badge = isBigEffort(e)
@@ -48,6 +74,7 @@ export function renderFeed(container, entries, users = [], banter = null) {
           style="background:${color}26;color:${color}">${esc(e.name.charAt(0).toUpperCase())}</span>
         <div class="min-w-0 flex-1">
           ${banterParent}
+          ${reactionsHtml(e)}
         </div>
       </div>`;
   };
@@ -57,4 +84,62 @@ export function renderFeed(container, entries, users = [], banter = null) {
       ${g.items.map(row).join('')}
     </div>`).join('');
   bindThreads(container, banter);
+  bindReactions(container, entries);
+}
+
+function bindReactions(container, entries) {
+  const me = state.currentUser;
+  if (!me) return;
+  container.querySelectorAll('.react-btn').forEach(btn => {
+    btn.addEventListener('click', async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const entryId = btn.dataset.entryId;
+      const emoji = btn.dataset.emoji;
+      if (!entryId || !emoji) return;
+      const entry = entries.find(e => e.id === entryId);
+      const prev = entry?.reactions || {};
+      const next = toggleUserReaction(prev, me.id, emoji);
+      const mine = next[me.id] || null;
+      // Optimistic local update so the count flips before the snapshot.
+      if (entry) entry.reactions = next;
+      const idx = state.entries.findIndex(e => e.id === entryId);
+      if (idx >= 0) state.entries[idx] = { ...state.entries[idx], reactions: next };
+      paintReactionRow(container, entryId, next, me.id);
+      try {
+        await writeEntryReaction(entryId, me.id, mine);
+      } catch (err) {
+        console.error(err);
+        if (entry) entry.reactions = prev;
+        if (idx >= 0) state.entries[idx] = { ...state.entries[idx], reactions: prev };
+        paintReactionRow(container, entryId, prev, me.id);
+      }
+    });
+  });
+}
+
+function paintReactionRow(container, entryId, reactions, meId) {
+  const row = container.querySelector(`[data-reactions-for="${CSS.escape(entryId)}"]`);
+  if (!row) return;
+  const counts = reactionCounts(reactions);
+  const mine = userReaction(reactions, meId);
+  row.querySelectorAll('.react-btn').forEach(btn => {
+    const em = btn.dataset.emoji;
+    const n = counts[em] || 0;
+    const on = mine === em;
+    btn.classList.toggle('react-on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const nEl = btn.querySelector('.react-n');
+    if (n > 0) {
+      if (nEl) nEl.textContent = String(n);
+      else {
+        const span = document.createElement('span');
+        span.className = 'react-n';
+        span.textContent = String(n);
+        btn.appendChild(span);
+      }
+    } else {
+      nEl?.remove();
+    }
+  });
 }

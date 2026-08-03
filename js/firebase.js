@@ -84,6 +84,19 @@ export async function updateUserPush(userId, push) {
   await setDoc(doc(db, 'users', userId), { push }, { mergeFields: ['push'] });
 }
 
+/**
+ * One user's reaction on an entry (FieldPath so concurrent reacts don't clobber).
+ * Pass emoji null to clear. Shape: entries/{id}.reactions.{userId} = emoji.
+ */
+export async function writeEntryReaction(entryId, userId, emoji) {
+  if (!entryId || !userId) return;
+  await setDoc(
+    doc(db, 'entries', entryId),
+    { reactions: { [userId]: emoji ?? deleteField() } },
+    { mergeFields: [new FieldPath('reactions', userId)] }
+  );
+}
+
 // Aiden threads live on config/banter.threads (see js/lib/threads.js + CLAUDE.md).
 //
 // Writes ONE thread key via a FieldPath, never the whole map. The old full-map

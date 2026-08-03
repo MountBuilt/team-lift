@@ -56,6 +56,9 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
   so quips rotate daily and stay testable.
   No em-dashes in any user-facing copy or banter (they read as AI-written);
   use a comma, full stop, or plain hyphen.
+- Peer reactions live on `entries/{id}.reactions` as `{ [userId]: emoji }`
+  (fixed set 🔥💀👏😂), written with FieldPath per user. Client-only; no tick
+  involvement. Weekly awards are pure client functions over Mon–Sun.
 - **Never publish an absolute weight in kg.** Deltas and trends only, in the
   charts and in the banter. The copywriter context carries `weightDelta` and
   never a raw weight, so the model cannot leak one; `findAbsoluteWeight()` in

@@ -380,7 +380,14 @@ const WORKOUT_LINES = [
   "rolled through {parts} without a squeak. Machine.",
   "made {parts} look easy, which it bloody isn't. Respect.",
   "went at {parts} like the bar insulted his mother.",
-  "knocked {parts} over before most of you found your shoes."
+  "knocked {parts} over before most of you found your shoes.",
+  // Widened Phase 4 — more variety for daily template feed lines.
+  "treated {parts} like a personal vendetta. Settled.",
+  "showed up, did {parts}, left. No drama, all business.",
+  "put a full stop on {parts}. End of discussion.",
+  "took {parts} personally and won the argument.",
+  "worked {parts} until the only thing left was respect.",
+  "lined {parts} up and knocked them down. Clean work."
 ];
 
 const BIG_STEP_LINES = [
@@ -393,7 +400,10 @@ const BIG_STEP_LINES = [
   "burned through {steps} steps. His shoes are filing a complaint.",
   "notched {steps} steps. That's a suburb, not a walk.",
   "did {steps} steps. Half the crew drove less than that today.",
-  "logged {steps} steps. Absolute freight train of a day."
+  "logged {steps} steps. Absolute freight train of a day.",
+  "hit {steps} steps. Pedometer is asking for a raise.",
+  "smashed {steps} steps. The footpath still has boot prints.",
+  "dropped {steps} steps like it was a casual stroll. It wasn't."
 ];
 
 const STEP_LINES = [
@@ -406,7 +416,10 @@ const STEP_LINES = [
   "clocked {steps} steps. Not a bad effort, now go again tomorrow.",
   "chalked up {steps} steps. Legs did their bit today.",
   "moved {steps} steps worth. Better than the bloke who moved none.",
-  "got {steps} steps done. Quietly building something here."
+  "got {steps} steps done. Quietly building something here.",
+  "slotted {steps} steps in. Consistency over heroics.",
+  "ticked {steps} steps. Boring in the best way.",
+  "added {steps} steps to the pile. Keeps the board honest."
 ];
 
 const WEIGH_LINES = [
@@ -417,7 +430,10 @@ const WEIGH_LINES = [
   "got on the scales without being asked twice. Take notes, lads.",
   "fronted up to the scales. Cold tiles, warm respect.",
   "did the weigh-in. Whatever it said, he looked at it. That counts.",
-  "put himself on the scales. Braver than most of this crew."
+  "put himself on the scales. Braver than most of this crew.",
+  "stood on the scales and owned it. No flinch.",
+  "weigh-in done. Accountability looks good on him.",
+  "hit the scales early. No excuses, no delays."
 ];
 
 const STEP_SUFFIXES = [
@@ -428,7 +444,9 @@ const STEP_SUFFIXES = [
   "Stacked {steps} steps on the end of it too.",
   "Then went and walked {steps} steps. Unbelievable.",
   "Threw in {steps} steps as a warm down. Sure mate.",
-  "And {steps} steps because apparently that wasn't enough."
+  "And {steps} steps because apparently that wasn't enough.",
+  "Still found room for {steps} steps. Relentless.",
+  "Slipped in {steps} steps on the way out."
 ];
 
 const WEIGH_SUFFIXES = [
@@ -436,7 +454,9 @@ const WEIGH_SUFFIXES = [
   "Fronted the scales too. No hiding today.",
   "Weighed in on top of it. Bloke's doing the lot.",
   "And got on the scales. Full house behaviour.",
-  "Scales as well. Nothing left on the card."
+  "Scales as well. Nothing left on the card.",
+  "Hit the scales after. Bookended the day properly.",
+  "Weigh-in tagged on. Accountability mode."
 ];
 
 // Daily challenge feed lines. Solo lines carry the whole sentence; suffixes
@@ -451,7 +471,10 @@ const CHALLENGE_SOLO_LINES = [
   "got the challenge in. Two minutes of work, all day to brag about it.",
   "ticked the challenge off early. Bloke's already ahead of you.",
   "did the reps. Didn't announce it, didn't need to. Now it's on the board.",
-  "banked the challenge. That's the bare minimum done properly, which is more than nothing."
+  "banked the challenge. That's the bare minimum done properly, which is more than nothing.",
+  "challenge done. Two minutes, zero excuses, full credit.",
+  "knocked the challenge out cold. Board updated, ego intact.",
+  "daily challenge ticked. The floor did not stand a chance."
 ];
 
 const CHALLENGE_SUFFIXES = [
@@ -462,7 +485,9 @@ const CHALLENGE_SUFFIXES = [
   "Challenge ticked on top of it. Absolute glutton for it.",
   "Challenge done as well. Bloke's collecting the whole set.",
   "And the challenge reps. Leaving nothing on the table.",
-  "Ticked the challenge too, because why not."
+  "Ticked the challenge too, because why not.",
+  "Challenge on the side. Man of many courses.",
+  "Plus the daily challenge. Board hog."
 ];
 
 // Rotating one-liner under the dashboard challenge card, seeded by date.

@@ -303,46 +303,36 @@ Pure aggregation helpers in `js/lib/aggregate.js` (or thin wrappers) + tests if 
 
 ## 4.1 Peer reactions (no AI)
 
-- On feed rows (and optionally report): one-tap reactions from a small fixed set (e.g. 🔥 💀 👏 😂).
-- Store on entry doc or a small map field (design in phase start — prefer **per-entry field** updated with FieldPath / merge so concurrent reactions don’t clobber).
-- Show counts + who reacted lightly (or just counts if space tight).
-- Client-only; no orchestrator involvement.
-- Firestore rules already open for trusted group — OK under accepted security model.
+- [x] On feed rows: one-tap 🔥 💀 👏 😂
+- [x] Store `entries/{id}.reactions` as `{ [userId]: emoji }`, FieldPath per user
+- [x] Show counts; highlight your active emoji
+- [x] Client-only; no orchestrator
+- Report reactions deferred (feed is enough for v1 of this)
 
 ## 4.2 Weekly awards (client-side)
 
-- Pure functions over week window: e.g. most steps, most workouts, challenge iron man (most challenge ticks), consistency (most days logged).
-- Render a small “This week’s podium” card on dashboard (Sun–Mon transition: show last week’s winners Mon morning optional).
-- Deterministic; no model call.
-- Never expose absolute kg in awards.
+- [x] Pure `weeklyAwards` (steps, workouts, challenge ticks, days logged)
+- [x] “This week’s podium” card on dashboard
+- [x] No absolute kg
 
 ## 4.3 Sunday / weekly Aiden recap (optional SuperGrok)
 
-- Only if Phase 1 NUC is solid and cost stays SuperGrok-only.
-- One extra report shape or weekend flag in orchestrator: week standings banter, still 300–600 chars, one thread target.
-- Must reuse one-call-per-tick discipline; do not add a second model call on busy ticks if avoidable (batch into same generateCopy when due).
-- Spec amendment short doc under `docs/superpowers/specs/` if behaviour changes.
-
-If this feels heavy, **ship 4.1 + 4.2 first** and leave 4.3 as a follow-up task inside Phase 4.
+- [ ] Deferred: ship after NUC cutover is solid; not in this Phase 4 drop
 
 ## 4.4 Banter pool refresh
 
-- When feed templates feel stale: widen pools in `js/lib/banter.js` + tests.
-- No AI back into feed parents.
+- [x] Widened workout / steps / weigh / challenge template pools in `banter.js`
+- [x] No AI back into feed parents
 
 ## 4.5 Hardening: reduce full re-render pain
 
-- Today every Firestore snapshot rebuilds dashboard/Me HTML (compose drafts already survive).
-- Incremental improvements (pick what’s proportional):
-  - Don’t wipe expanded thread panels / scroll position carelessly
-  - Or targeted re-render of feed/today-board only when entries/banter change
-- Keep pure logic tested; no framework migration.
+- [x] Preserve scroll position on same-tab snapshot re-renders (`app.js`)
+- [x] Expanded threads + compose drafts already survive (prior work)
+- Full incremental DOM diff still deferred (proportional)
 
 ## 4.6 Docs / maintainer hygiene
 
-- CLAUDE.md: Grok primary, Claude welcome; NUC is production tick host; Mac is dev.
-- Point Commands at `docs/ops-nuc.md`.
-- Do not remove Claude-oriented guidance that still helps a visiting Claude review.
+- [x] CLAUDE.md notes reactions shape + awards; NUC tick / Grok primary already from Phase 1
 
 **Prod checklist:** react on a mate’s log; see awards mid-week; feed lines still instant; Aiden human-led only; overnight NUC still sole tick host; optional weekly recap once if implemented.
 

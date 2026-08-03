@@ -26,6 +26,9 @@ function renderMain() {
   const tab = state.tab || 'dash';
   const animate = tab !== lastShownTab;
   lastShownTab = tab;
+  // Snapshot re-renders used to jump scroll to top / mid-page. Keep position
+  // when we are only refreshing live data on the same tab (Phase 4.5).
+  const scrollY = animate ? 0 : window.scrollY;
   if (animate) window.scrollTo(0, 0);
   app.innerHTML = `
     <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/90 backdrop-blur">
@@ -50,6 +53,10 @@ function renderMain() {
       animate,
       onGoMe: () => { state.tab = 'me'; route(); }
     });
+  }
+  if (!animate && scrollY > 0) {
+    // Restore after layout; rAF so charts/DOM height settle first.
+    requestAnimationFrame(() => window.scrollTo(0, scrollY));
   }
 }
 

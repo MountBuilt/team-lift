@@ -1,6 +1,7 @@
 import {
   teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks, userHasLogged
 } from '../lib/aggregate.js';
+import { weeklyAwards, AWARD_LABELS } from '../lib/awards.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import {
@@ -197,6 +198,43 @@ function tilesHtml(t) {
   </div>`;
 }
 
+// Client-only podium for this Mon–Sun. Never shows absolute kg.
+function awardsHtml(state, monday) {
+  const awards = weeklyAwards(state.entries, state.users, monday);
+  const keys = ['steps', 'workouts', 'challenge', 'consistency'];
+  const any = keys.some(k => awards[k]);
+  if (!any) {
+    return `
+      <h3 class="eyebrow">This week's podium</h3>
+      <p class="mt-2 text-sm text-neutral-400">Nobody's on it yet. Log something and start climbing.</p>`;
+  }
+  const fmt = (key, w) => {
+    if (key === 'steps') return compactNumber(w.value);
+    return String(w.value);
+  };
+  const rows = keys.map(key => {
+    const w = awards[key];
+    if (!w) {
+      return `
+        <div class="flex items-center justify-between gap-2 py-2 border-b border-edge/50 last:border-0">
+          <span class="text-xs font-bold text-neutral-500">${esc(AWARD_LABELS[key])}</span>
+          <span class="text-xs text-neutral-600">—</span>
+        </div>`;
+    }
+    const color = safeColor(w.color);
+    return `
+      <div class="flex items-center justify-between gap-2 py-2 border-b border-edge/50 last:border-0">
+        <span class="text-xs font-bold text-neutral-500">${esc(AWARD_LABELS[key])}</span>
+        <span class="text-sm font-black truncate" style="color:${color}">
+          ${esc(w.name)} <span class="text-neutral-500 font-bold">· ${fmt(key, w)}</span>
+        </span>
+      </div>`;
+  }).join('');
+  return `
+    <h3 class="mb-1 eyebrow">This week's podium</h3>
+    ${rows}`;
+}
+
 // One bodyweight exercise a day, same for everyone, ramping weekly. Ticking
 // it writes dailyChallenge:true onto today's entry; streaks are consecutive
 // ticked days. Hidden once the challenge window has ended.
@@ -370,6 +408,7 @@ export function renderDashboard(container, state, {
       ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
       ${card(reportCard(state, today), nextFx(), 'report-card')}
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
+      ${card(awardsHtml(state, monday), nextFx(), 'awards-card')}
       <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
         ${workoutsPanel(state, monday)}
       </section>

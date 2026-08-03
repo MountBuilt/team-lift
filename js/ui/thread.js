@@ -1,8 +1,9 @@
 // Expandable Aiden thread under a card parent or feed line.
 // Spec: docs/superpowers/specs/2026-07-19-aiden-threads-design.md
 //
-// UX: no "Reply" chrome. Tap the parent text to expand + focus compose.
-// "N comments" only when N ≥ 1. Author bin on own messages only.
+// UX: no heavy "Reply" chrome. Tap the parent text to expand + focus compose.
+// When N ≥ 1 show "N comments"; when empty a quiet "Banter" invite (Phase 2).
+// Author bin on own messages only.
 import { writeBanterThread } from '../firebase.js';
 import { state } from '../state.js';
 import {
@@ -61,10 +62,12 @@ function allThreads(banter) {
  */
 export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach' } = {}) {
   const n = commentCount(threadOf(banter, target));
+  // Empty threads still need a discoverable affordance (Phase 2); keep it quiet.
   const count = n > 0
     ? `<button type="button" class="thread-count" data-thread-target="${esc(target)}"
          aria-expanded="false">${n} comment${n === 1 ? '' : 's'}</button>`
-    : '';
+    : `<button type="button" class="thread-count thread-invite" data-thread-target="${esc(target)}"
+         aria-expanded="false">Banter</button>`;
   return `
     <div class="thread-wrap" data-thread-root="${esc(target)}">
       <div class="thread-parent ${parentClass}" data-thread-target="${esc(target)}" role="button" tabindex="0">

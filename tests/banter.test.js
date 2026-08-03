@@ -4,7 +4,8 @@ import {
   pickFrom, feedLine, stepsComment, workoutsComment, weightComment,
   nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS,
   hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS,
-  isBigEffort, effortLabel, EFFORT_LABELS
+  isBigEffort, effortLabel, EFFORT_LABELS,
+  loggedToday, todayBoardMembers, logNudgeLine
 } from '../js/lib/banter.js';
 import { weightAxisBounds } from '../js/lib/aggregate.js';
 
@@ -415,4 +416,49 @@ test('stepsComment: same-day grace - a lone stepper on day one is encouraged, no
     if (/couch|carrying|walking|forgotten/i.test(c)) sawRoast = true;
   }
   assert.ok(sawRoast, 'expected a sole-stepper roast once completed days exist');
+});
+
+// ---- Phase 2: today board + log helpers ------------------------------------
+
+test('loggedToday uses hasAnyLog for that user and date only', () => {
+  const entries = [
+    e('u1', '2026-08-03', { steps: 5000 }),
+    e('u2', '2026-08-03', { steps: 0 }),
+    e('u1', '2026-08-02', { steps: 9999 })
+  ];
+  assert.equal(loggedToday(entries, 'u1', '2026-08-03'), true);
+  assert.equal(loggedToday(entries, 'u2', '2026-08-03'), false);
+  assert.equal(loggedToday(entries, 'u1', '2026-08-02'), true);
+  assert.equal(loggedToday(entries, 'u3', '2026-08-03'), false);
+  assert.equal(loggedToday([], 'u1', '2026-08-03'), false);
+});
+
+test('todayBoardMembers marks logged / quiet and optional secondary flags', () => {
+  const entries = [
+    e('u1', '2026-08-03', { steps: 4000, dailyChallenge: true }),
+    e('u2', '2026-08-03', { workoutParts: ['legs'] }),
+    e('u3', '2026-08-02', { steps: 10000 }) // yesterday only
+  ];
+  const board = todayBoardMembers(users, entries, '2026-08-03');
+  assert.equal(board.length, 3);
+  assert.deepEqual(board[0], {
+    id: 'u1', name: 'Sam', color: '#f97316',
+    logged: true, challenge: true, workout: false
+  });
+  assert.deepEqual(board[1], {
+    id: 'u2', name: 'Alex', color: '#22d3ee',
+    logged: true, challenge: false, workout: true
+  });
+  assert.deepEqual(board[2], {
+    id: 'u3', name: 'Bruce', color: '#a3e635',
+    logged: false, challenge: false, workout: false
+  });
+});
+
+test('logNudgeLine is deterministic banter, never guilt-trip empty', () => {
+  const a = logNudgeLine('2026-08-03');
+  const b = logNudgeLine('2026-08-03');
+  assert.equal(a, b);
+  assert.ok(typeof a === 'string' && a.length > 10);
+  assert.ok(!a.includes('—')); // no em-dashes in banter
 });

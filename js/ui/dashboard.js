@@ -3,7 +3,9 @@ import {
 } from '../lib/aggregate.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
 import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
-import { pickFrom, CHALLENGE_QUIPS } from '../lib/banter.js';
+import {
+  pickFrom, CHALLENGE_QUIPS, todayBoardMembers, loggedToday, logNudgeLine
+} from '../lib/banter.js';
 import { templateReport, reportFresh } from '../lib/report.js';
 import { REPORT_TARGET } from '../lib/threads.js';
 import { saveEntry } from '../firebase.js';
@@ -11,6 +13,7 @@ import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { runCountUps, burstFrom, compactNumber } from './fx.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
+import { openLogModal } from './logmodal.js';
 
 // One-shot celebration: set when the user ticks the challenge, consumed by
 // the next render so the DONE stamp slams in exactly once.
@@ -66,6 +69,61 @@ function headerHtml(c, today) {
         <span>${inWindow ? `${totalDays - dayN} days left` : ''}</span>
       </div>
     </header>`;
+}
+
+// Who has logged something today (hasAnyLog). Quiet chips stay neutral —
+// same-day grace means no roast copy on the strip.
+function todayBoardHtml(state, today) {
+  const board = todayBoardMembers(state.users, state.entries, today);
+  if (board.length === 0) return '';
+  const nLogged = board.filter(m => m.logged).length;
+  const chips = board.map(m => {
+    const color = safeColor(m.color);
+    const initial = esc((m.name || '?').charAt(0).toUpperCase());
+    // Optional secondary: tiny marks for challenge / workout when already logged.
+    const marks = [];
+    if (m.challenge) marks.push('<span title="Challenge done">✓</span>');
+    if (m.workout) marks.push('<span title="Workout logged">W</span>');
+    const markHtml = marks.length
+      ? `<span class="mt-0.5 flex gap-0.5 text-[9px] font-black text-neutral-500">${marks.join('')}</span>`
+      : '';
+    return `
+      <div class="flex min-w-[2.75rem] flex-1 flex-col items-center gap-1" title="${esc(m.name)}">
+        <span class="relative flex h-10 w-10 items-center justify-center rounded-full display text-sm
+          ${m.logged ? 'ring-2 ring-green-400/70' : 'opacity-40 grayscale-[30%]'}"
+          style="background:${color}26;color:${color}"
+          aria-label="${esc(m.name)}: ${m.logged ? 'logged today' : 'not yet'}">
+          ${initial}
+          ${m.logged
+            ? '<span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-card"></span>'
+            : ''}
+        </span>
+        <span class="max-w-[3.5rem] truncate text-[10px] font-bold
+          ${m.logged ? 'text-neutral-300' : 'text-neutral-600'}">${esc(m.name)}</span>
+        ${markHtml}
+      </div>`;
+  }).join('');
+  return `
+    <div class="mb-2 flex items-center justify-between">
+      <h3 class="eyebrow">Today on the board</h3>
+      <span class="text-[11px] font-bold text-neutral-500">${nLogged}/${board.length} logged</span>
+    </div>
+    <div class="flex flex-wrap gap-2">${chips}</div>`;
+}
+
+// Personal CTA when the current user has nothing logged today. Banter voice,
+// not a guilt trip; disappears on the next snapshot after they save anything.
+function logNudgeHtml(state, today) {
+  const me = state.currentUser;
+  if (!me || loggedToday(state.entries, me.id, today)) return '';
+  const line = logNudgeLine(`${me.id}|${today}|nudge`);
+  return `
+    <div class="flex flex-col gap-3">
+      <p class="text-sm leading-snug text-neutral-200">${esc(line)}</p>
+      <button type="button" id="log-nudge-cta"
+        class="pressable w-full rounded-xl bg-accent py-3 display text-lg tracking-wide text-black active:bg-accentDim">
+        LOG SOMETHING</button>
+    </div>`;
 }
 
 function tilesHtml(t) {
@@ -238,29 +296,36 @@ export function renderDashboard(container, state, { animate = false } = {}) {
   const c = state.challenge;
   const today = todayStr();
   const monday = mondayOf(today);
+  const nudge = logNudgeHtml(state, today);
+  let fx = 0;
+  const nextFx = () => fx++;
 
   container.innerHTML = `
     <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pb-28 pt-5">
       ${headerHtml(c, today)}
-      ${card(reportCard(state, today), 1, 'report-card')}
-      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), 2)}
-      ${today <= c.endDate ? card(challengeCard(state, today), 3) : ''}
+      ${card(todayBoardHtml(state, today), nextFx())}
+      ${nudge ? card(nudge, nextFx(), 'log-nudge-card border-accent/30') : ''}
+      ${card(reportCard(state, today), nextFx(), 'report-card')}
+      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
+      ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
       ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
         <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>`, 4)}
-      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:5">
+        <p id="weight-empty" class="hidden text-sm text-neutral-500">No weigh-ins yet. Be the first!</p>`, nextFx())}
+      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
         ${workoutsPanel(state, monday)}
       </section>
       ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
         <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>`, 6)}
-      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, 7)}
+        <p id="steps-empty" class="hidden text-sm text-neutral-500">No steps logged yet. Be the first!</p>`, nextFx())}
+      ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, nextFx())}
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
   bindThreads(container, state.banter);
   initWorkoutTooltip(container.querySelector('#workouts-card'));
   if (animate) runCountUps(container);
+
+  container.querySelector('#log-nudge-cta')?.addEventListener('click', () => openLogModal());
 
   // Tick today's challenge: confetti fires immediately, then the Firestore
   // snapshot re-render flips the card to the DONE stamp (instant with local

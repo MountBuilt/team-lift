@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
-  workoutWeek, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay
+  workoutWeek, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay,
+  lastWeight
 } from '../js/lib/aggregate.js';
 
 const challenge = { title: 'Test', startDate: '2026-07-06', endDate: '2026-08-02' };
@@ -180,4 +181,18 @@ test('groupFeedByDay truncates to limit before grouping, and labels each group',
   const groups = groupFeedByDay(entries, '2026-07-07', 2);
   assert.deepEqual(groups.map(g => g.date), ['2026-07-07', '2026-07-06']);
   assert.deepEqual(groups.map(g => g.label), ['Today', 'Yesterday']);
+});
+
+test('lastWeight returns most recent weigh-in for the user, or null', () => {
+  const entries = [
+    e('u1', '2026-07-10', { weight: 92.5 }),
+    e('u1', '2026-07-20', { weight: 91.0 }),
+    e('u1', '2026-07-25', { steps: 5000 }),
+    e('u2', '2026-07-26', { weight: 80 })
+  ];
+  assert.equal(lastWeight(entries, 'u1'), 91.0);
+  assert.equal(lastWeight(entries, 'u2'), 80);
+  assert.equal(lastWeight(entries, 'u1', '2026-07-15'), 92.5);
+  assert.equal(lastWeight([], 'u1'), null);
+  assert.equal(lastWeight(entries, 'nobody'), null);
 });

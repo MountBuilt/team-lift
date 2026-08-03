@@ -59,6 +59,21 @@ export function weightAxisBounds(kgValues) {
   };
 }
 
+/**
+ * Most recent weigh-in for a user (for log-sheet prefill only — never show
+ * absolute kg on team surfaces). Optional `onOrBefore` caps the date so a
+ * backfill day can prefill from history before that day.
+ */
+export function lastWeight(entries, userId, onOrBefore = null) {
+  let best = null;
+  for (const e of entries || []) {
+    if (e.userId !== userId || typeof e.weight !== 'number') continue;
+    if (onOrBefore != null && e.date > onOrBefore) continue;
+    if (!best || e.date > best.date) best = e;
+  }
+  return best ? best.weight : null;
+}
+
 // Mon..Sun for one user: { date, parts } per day, merging parts (dedup,
 // order-preserved) if more than one entry somehow lands on the same day.
 export function workoutWeek(entries, userId, mondayStr) {

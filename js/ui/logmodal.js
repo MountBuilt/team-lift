@@ -1,8 +1,13 @@
 import { saveEntry } from '../firebase.js';
 import { state } from '../state.js';
 import { todayStr, dayOptions } from '../lib/dates.js';
+import { lastWeight } from '../lib/aggregate.js';
 import { WORKOUT_PARTS } from '../config.js';
 import { esc } from '../lib/esc.js';
+import { burstFrom } from './fx.js';
+
+// Step shortcuts on the log sheet. Free number field still wins if they type.
+export const STEP_PRESETS = [5000, 8000, 10000, 12000];
 
 export function mountFab(onClick) {
   if (document.getElementById('fab')) return;
@@ -22,11 +27,24 @@ export function setFabVisible(visible) {
   document.getElementById('fab')?.classList.toggle('hidden', !visible);
 }
 
+function pulseFab() {
+  const fab = document.getElementById('fab');
+  if (!fab) return;
+  fab.classList.remove('fab-pulse');
+  void fab.offsetWidth;
+  fab.classList.add('fab-pulse');
+  setTimeout(() => fab.classList.remove('fab-pulse'), 700);
+}
+
 export function openLogModal(dateStr = todayStr()) {
   document.getElementById('log-modal')?.remove();
   const user = state.currentUser;
   const existing = state.entries.find(e => e.userId === user.id && e.date === dateStr);
   const parts = new Set(existing?.workoutParts || []);
+  // Prefill weight from this day's entry, else most recent weigh-in on/before
+  // this day (editable). Blank if they have never weighed in.
+  const weightValue = existing?.weight ?? lastWeight(state.entries, user.id, dateStr) ?? '';
+  const stepsValue = existing?.steps ?? '';
 
   const chip = (p) => `
     <button type="button" data-part="${p}" class="part-chip rounded-full border px-4 py-2 text-sm font-bold
@@ -43,6 +61,10 @@ export function openLogModal(dateStr = todayStr()) {
       ${o.date === dateStr ? 'border-accent bg-accent text-black' : 'border-edge bg-card text-neutral-300'}">
       ${esc(o.label)}</button>`;
 
+  const stepPreset = (n) => `
+    <button type="button" data-steps="${n}" class="step-preset rounded-full border border-edge bg-ink px-3 py-1.5
+      text-xs font-black tracking-wide text-neutral-300">${n >= 1000 ? `${n / 1000}k` : n}</button>`;
+
   const modal = document.createElement('div');
   modal.id = 'log-modal';
   modal.className = 'sheet-backdrop fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70';
@@ -53,6 +75,7 @@ export function openLogModal(dateStr = todayStr()) {
         <h3 class="display text-2xl tracking-wide">LOG IT</h3>
         <button type="button" id="log-close" class="text-2xl text-neutral-500 px-2">✕</button>
       </div>
+      <p class="text-xs text-neutral-500 -mt-2">One field is enough. Leave the rest blank.</p>
       <div class="flex flex-col gap-2">
         <span class="text-sm font-bold text-neutral-400">Day</span>
         <div id="log-days" class="flex flex-wrap gap-2" data-expanded="${expanded ? '1' : '0'}">
@@ -66,14 +89,16 @@ export function openLogModal(dateStr = todayStr()) {
       </div>
       <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Weight (kg)
         <input id="log-weight" type="number" step="0.1" min="30" max="300" inputmode="decimal"
-          value="${esc(existing?.weight ?? '')}" placeholder="—"
+          value="${esc(weightValue)}" placeholder="last weigh-in or skip"
           class="rounded-xl bg-ink border border-edge px-4 py-3 text-lg">
       </label>
-      <label class="flex flex-col gap-1 text-sm font-bold text-neutral-400">Steps
+      <div class="flex flex-col gap-2">
+        <span class="text-sm font-bold text-neutral-400">Steps</span>
+        <div class="flex flex-wrap gap-2">${STEP_PRESETS.map(stepPreset).join('')}</div>
         <input id="log-steps" type="number" step="1" min="0" max="200000" inputmode="numeric"
-          value="${esc(existing?.steps ?? '')}" placeholder="—"
+          value="${esc(stepsValue)}" placeholder="or type any number"
           class="rounded-xl bg-ink border border-edge px-4 py-3 text-lg">
-      </label>
+      </div>
       <div class="flex flex-col gap-2">
         <span class="text-sm font-bold text-neutral-400">Workout</span>
         <div class="flex flex-wrap gap-2">${WORKOUT_PARTS.map(chip).join('')}</div>
@@ -104,6 +129,20 @@ export function openLogModal(dateStr = todayStr()) {
     });
   });
 
+  modal.querySelectorAll('.step-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = modal.querySelector('#log-steps');
+      input.value = btn.dataset.steps;
+      modal.querySelectorAll('.step-preset').forEach(b => {
+        b.classList.remove('border-accent', 'bg-accent', 'text-black');
+        b.classList.add('border-edge', 'bg-ink', 'text-neutral-300');
+      });
+      btn.classList.remove('border-edge', 'bg-ink', 'text-neutral-300');
+      btn.classList.add('border-accent', 'bg-accent', 'text-black');
+      input.focus();
+    });
+  });
+
   // Reveal the other days in place, no reopen (nothing typed is lost).
   modal.querySelector('#log-days-more')?.addEventListener('click', () => {
     const row = modal.querySelector('#log-days');
@@ -130,7 +169,8 @@ export function openLogModal(dateStr = todayStr()) {
     const w = modal.querySelector('#log-weight').value;
     const s = modal.querySelector('#log-steps').value;
     // Blank inputs are omitted (never overwrite); a value that was prefilled
-    // and then cleared becomes an explicit null (field cleared).
+    // and then cleared becomes an explicit null only when that day already
+    // had a stored weight (history prefill alone must not write null).
     if (w !== '') fields.weight = Number(w);
     else if (existing?.weight != null) fields.weight = null;
     if (s !== '') fields.steps = Number(s);
@@ -144,6 +184,9 @@ export function openLogModal(dateStr = todayStr()) {
     btn.textContent = 'SAVING…';
     try {
       await saveEntry(user.id, user.name, dateStr, fields);
+      // Celebrate log-sheet saves only (challenge card has its own burst).
+      burstFrom(btn);
+      pulseFab();
       close();
     } catch (err) {
       console.error(err);

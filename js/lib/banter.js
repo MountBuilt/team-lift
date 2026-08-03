@@ -77,6 +77,47 @@ export const hasAnyLog = (e) =>
   (Array.isArray(e.workoutParts) && e.workoutParts.length > 0) ||
   e.dailyChallenge === true;
 
+/** True if this user has any real field on `date` (today board / personal nudge). */
+export function loggedToday(entries, userId, date) {
+  return (entries || []).some(e => e.userId === userId && e.date === date && hasAnyLog(e));
+}
+
+/**
+ * Per-member strip for the dashboard "today" board. Neutral only — same-day
+ * grace means quiet members get no roast copy, just a quieter chip.
+ */
+export function todayBoardMembers(users, entries, date) {
+  return (users || []).map(u => {
+    const e = (entries || []).find(x => x.userId === u.id && x.date === date);
+    const workout = Array.isArray(e?.workoutParts) && e.workoutParts.length > 0;
+    return {
+      id: u.id,
+      name: u.name,
+      color: u.color,
+      logged: !!(e && hasAnyLog(e)),
+      challenge: e?.dailyChallenge === true,
+      workout
+    };
+  });
+}
+
+// Personal nudge when the current user has not logged anything today.
+// Same-day grace: cheeky invitation, not a lazy roast.
+export const LOG_NUDGE_LINES = [
+  'Nothing on the board for you yet, legend. Chuck something in before the day gets away.',
+  'Empty card, full potential. Log a weight, steps, or a session, no heroics required.',
+  'The board is waiting on you, mate. One field and you are on it.',
+  'Still quiet from your end. Tap log and give the boys something to work with.',
+  'Day is not done until you are on the board. Even steps count, softcock.',
+  'You have not logged yet. The crew cannot roast an empty slot, so fill it in.',
+  'No entry today, champ. Hit the plus and make it official.',
+  'Ghost mode is not a training plan. Log something, anything, then swagger.'
+];
+
+export function logNudgeLine(seed) {
+  return pickFrom(LOG_NUDGE_LINES, seed);
+}
+
 export const REST_GRACE_DAYS = 2; // 1-2 empty completed days = legit rest
 const EMPTY_LOOKBACK = 30;        // cap the walk-back so a fresh member terminates
 

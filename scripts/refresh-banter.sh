@@ -1,6 +1,8 @@
 #!/bin/bash
-# Team Lift tick, run every 60s by launchd (com.teamlift.banter). Thin wrapper:
-# all logic lives in scripts/orchestrator.mjs.
+# Team Lift tick. Production host is the NUC (systemd user timer
+# teamlift-banter.timer). Mac launchd (com.teamlift.banter) is deprecated
+# reference only — unload it after NUC cutover so two hosts do not double-send.
+# Thin wrapper: all logic lives in scripts/orchestrator.mjs.
 #
 # QUIET BY DEFAULT. Most ticks have nothing to do; the orchestrator prints just
 # "idle" and this script logs nothing for those. Only ticks that did something
@@ -14,9 +16,13 @@
 #   api                  Anthropic Messages API if ~/.config/teamlift/anthropic-key
 #
 # Safe to run by hand; pass --dry-run or --send-test <userId> straight through.
+# Ops: docs/ops-nuc.md
 set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-LOG="$HOME/Library/Logs/teamlift-banter.log"
+# XDG-style path works on Linux NUC and Mac hand-runs. Older Mac launchd
+# installs used ~/Library/Logs/teamlift-banter.log — that path is no longer
+# written; tail the new path after pull.
+LOG="$HOME/.local/state/teamlift/banter.log"
 API_KEY_FILE="$HOME/.config/teamlift/anthropic-key"
 TOKEN_FILE="$HOME/.config/teamlift/claude-token"
 GROK_AUTH="$HOME/.grok/auth.json"
@@ -24,10 +30,20 @@ GROK_AUTH="$HOME/.grok/auth.json"
 mkdir -p "$(dirname "$LOG")"
 touch "$LOG"
 
-# grok binary often lives in ~/.grok/bin (install path), not homebrew.
-export PATH="$HOME/.grok/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+# grok binary often lives in ~/.grok/bin; node may be in ~/.local/bin (Linux)
+# or homebrew (Mac). Prefer an already-active nvm node if present.
+export PATH="$HOME/.grok/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  # shellcheck disable=SC2012
+  _nvm_bin="$(ls -1d "$HOME/.nvm/versions/node"/*/bin 2>/dev/null | tail -1)"
+  if [ -n "$_nvm_bin" ] && [ -x "$_nvm_bin/node" ]; then
+    export PATH="$_nvm_bin:$PATH"
+  fi
+  unset _nvm_bin
+fi
 
-OUT="$(mktemp -t teamlift-tick)"
+# Portable temp file (GNU mktemp needs XXXXXX; macOS -t form is not portable).
+OUT="$(mktemp "${TMPDIR:-/tmp}/teamlift-tick.XXXXXX")"
 trap 'rm -f "$OUT"' EXIT
 
 # Subshell, not a brace group: the `exit` calls below must end this block
@@ -116,7 +132,7 @@ trap 'rm -f "$OUT"' EXIT
 ) >"$OUT" 2>&1
 code=$?
 
-# Always show the run (launchd discards stdout; a hand run wants to see it,
+# Always show the run (timers discard stdout; a hand run wants to see it,
 # whether it is a terminal or a pipe).
 cat "$OUT"
 

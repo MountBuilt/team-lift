@@ -1,0 +1,16 @@
+[Unit]
+Description=Team Lift banter tick every 60s
+Documentation=file:%h/team-lift/docs/ops-nuc.md
+
+[Timer]
+# First fire soon after boot / user session start, then every 60s after the
+# last activation. Matches the old Mac launchd StartInterval=60 so Aiden still
+# answers comments inside a minute or two.
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
+Persistent=true
+Unit=teamlift-banter.service
+
+[Install]
+WantedBy=timers.target

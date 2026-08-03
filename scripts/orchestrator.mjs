@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Team Lift tick: Aiden's morning report, thread replies, and push sends.
-// Runs every 60s from launchd (com.teamlift.banter). This script owns every
-// fetch, write and send; scripts/lib/copywriter.mjs owns the model call.
+// Production: every 60s from NUC systemd user timer (teamlift-banter.timer).
+// Mac launchd (com.teamlift.banter) is deprecated reference only — see
+// docs/ops-nuc.md. This script owns every fetch, write and send;
+// scripts/lib/copywriter.mjs owns the model call.
 //
 // Spec: docs/superpowers/specs/2026-07-26-morning-report-design.md
 //

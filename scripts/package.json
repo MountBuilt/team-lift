@@ -2,7 +2,7 @@
   "name": "teamlift-scripts",
   "private": true,
   "type": "module",
-  "description": "Local sender tooling for the hourly launchd job. Never served by the site.",
+  "description": "Tick tooling for the NUC systemd timer (Aiden + push). Never served by the site.",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "web-push": "^3.6.7"

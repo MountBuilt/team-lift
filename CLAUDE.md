@@ -8,10 +8,14 @@ Pages.
 **The one goal: get the crew logging something every day.** Judge every change
 against that.
 
-**Maintainers:** Claude and Grok both work this repo. Read this file and the
-specs under `docs/superpowers/specs/` before changing the report, the feed, the
-tick, or the copywriter. Leave short comments when you change cross-agent
-behaviour (orchestrator, `config/banter` shape, `scripts/prompt/aiden.md`).
+**Maintainers:** **Grok primary**, Claude welcome for review and occasional
+edits. Read this file and the specs under `docs/superpowers/specs/` before
+changing the report, the feed, the tick, or the copywriter. Leave short
+comments when you change cross-agent behaviour (orchestrator, `config/banter`
+shape, `scripts/prompt/aiden.md`).
+
+**Production tick host:** Intel NUC (Linux Mint, systemd user timer). Mac is
+for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 
 ## Specs (read these)
 - v1 app: `docs/superpowers/specs/2026-07-08-team-lift-design.md`
@@ -21,16 +25,19 @@ behaviour (orchestrator, `config/banter` shape, `scripts/prompt/aiden.md`).
 - **Morning report + live replies (2026-07-26):**
   `docs/superpowers/specs/2026-07-26-morning-report-design.md` — **source of
   truth** for Aiden, the feed, and the tick.
+- NUC tick ops: `docs/ops-nuc.md`
 
 ## Commands
 - Unit tests: `node --test` (auto-discovers `tests/*.test.js`; Node 26 rejects a bare `tests/` directory argument)
 - Run locally: `python3 -m http.server 8000` then open http://localhost:8000
 - Deploy: push to `main` (GitHub Pages serves repo root)
 - Firestore rules deploy: `firebase deploy --only firestore:rules`
-- Tick (report + replies + pushes) by hand: `bash scripts/refresh-banter.sh`
-  (wrapper for `node scripts/orchestrator.mjs`; supports `--dry-run` and
-  `--send-test <userId>`; logs to `~/Library/Logs/teamlift-banter.log`, and
-  stays silent for idle ticks)
+- Tick (report + replies + pushes): **production** is the NUC systemd timer
+  (`teamlift-banter.timer`, every 60s). Hand/dry-run from any machine:
+  `bash scripts/refresh-banter.sh` (wrapper for `node scripts/orchestrator.mjs`;
+  supports `--dry-run` and `--send-test <userId>`; logs to
+  `~/.local/state/teamlift/banter.log`; silent for idle ticks). Install /
+  cutover: `docs/ops-nuc.md`
 - Tailwind rebuild (needed whenever HTML/JS gains a utility class not already
   in use): `npx tailwindcss@3.4.17 -i css/tailwind.source.css -o css/tailwind.css --minify`
 
@@ -133,8 +140,8 @@ Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
   broken tick leaves a quiet thread, not Aiden typing forever.
 - **Copy backend:** `scripts/lib/copywriter.mjs`. Default is **SuperGrok**
   via `grok -p` (Grok Build OAuth at `~/.grok/auth.json`, no console.x.ai
-  metered bill). Child env strips `XAI_API_KEY` so launchd cannot silently
-  burn API credits. Measured ~6s for a structured thread-shaped call.
+  metered bill). Child env strips `XAI_API_KEY` so systemd/launchd cannot
+  silently burn API credits. Measured ~6s for a structured thread-shaped call.
   Fallbacks: `claude -p` (Claude Pro), then Anthropic Messages API if
   `~/.config/teamlift/anthropic-key` is set. Force with
   `TEAM_LIFT_COPY_BACKEND=grok|claude|api`. Both CLI paths need **stdin

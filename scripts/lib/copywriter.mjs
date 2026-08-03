@@ -155,7 +155,7 @@ export function extractGrokCopy(stdout) {
       return envelope.structuredOutput;
     }
     // Already the copy shape (no envelope)
-    if ('threadReplies' in envelope || 'report' in envelope || 'pushes' in envelope) {
+    if ('threadReplies' in envelope || 'report' in envelope || 'weeklyReport' in envelope || 'pushes' in envelope) {
       return envelope;
     }
     if (typeof envelope.text === 'string' && envelope.text.trim()) {
@@ -184,7 +184,8 @@ function outputInstructions() {
     '## Output',
     '',
     'Return ONLY a JSON object with keys `report` (string, empty when not',
-    'requested), `threadReplies` (array of {target, text}) and `pushes` (array',
+    'requested), `weeklyReport` (string, empty when not requested),',
+    '`threadReplies` (array of {target, text}) and `pushes` (array',
     'of {userId, kind, title, body}). No markdown fence, no commentary.'
   ].join('\n');
 }
@@ -196,13 +197,13 @@ async function viaApi(context, log) {
   // The daily report is written once at ~3am with nobody waiting, so let it
   // think. Thread-only ticks are latency-critical (a bloke is sitting there
   // waiting for Aiden to answer), so skip thinking and keep it snappy.
-  const wantsReport = context.jobs.includes('report');
+  const wantsLongCopy = context.jobs.includes('report') || context.jobs.includes('weeklyReport');
   const resp = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: MAX_TOKENS,
-    thinking: wantsReport ? { type: 'adaptive' } : { type: 'disabled' },
+    thinking: wantsLongCopy ? { type: 'adaptive' } : { type: 'disabled' },
     output_config: {
-      effort: wantsReport ? 'high' : 'medium',
+      effort: wantsLongCopy ? 'high' : 'medium',
       format: { type: 'json_schema', schema: copySchema() }
     },
     system: [{

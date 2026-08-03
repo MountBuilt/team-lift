@@ -14,6 +14,7 @@ import { addDays, mondayOf, dayLabel } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
 import { challengeStreak } from './challenge.js';
 import { pickFrom, stepsComment, workoutsComment, weightComment } from './banter.js';
+import { thisWeekStandings } from './threads.js';
 
 /** Signed change vs the most recent weigh-in strictly before `dateStr`, or null. */
 export function weightDelta(entries, userId, dateStr) {
@@ -130,4 +131,60 @@ function hash(s) {
 export function reportFresh(report, todayStr) {
   return Boolean(report?.text) && Boolean(report?.day) &&
     addDays(report.day, 1) >= todayStr && report.day <= todayStr;
+}
+
+/**
+ * Weekly recap is shown for the current week (weekKey === this monday) or
+ * last week (weekKey === previous monday) so Mon–Sat still see Sunday's piece.
+ */
+export function weeklyReportFresh(weekly, todayStr) {
+  if (!weekly?.text || !weekly?.weekKey) return false;
+  const mon = mondayOf(todayStr);
+  return weekly.weekKey === mon || weekly.weekKey === addDays(mon, -7);
+}
+
+/**
+ * Offline weekly recap when the AI weekly is missing. Week standings only,
+ * never absolute kg. Same voice as the other template banter.
+ */
+export function templateWeeklyReport(entries, users, todayStr) {
+  const monday = mondayOf(todayStr);
+  const seed = `weekly|${monday}`;
+  const week = thisWeekStandings(entries, users, todayStr);
+  const parts = [];
+
+  const stepKing = [...week.members].sort((a, b) => b.steps - a.steps || a.name.localeCompare(b.name))[0];
+  const workKing = [...week.members].sort((a, b) => b.workouts - a.workouts || a.name.localeCompare(b.name))[0];
+  const chalKing = [...week.members].sort((a, b) => b.challengeTicks - a.challengeTicks || a.name.localeCompare(b.name))[0];
+
+  parts.push(pickFrom([
+    `Week of ${monday}: the board does not lie.`,
+    `Sunday check-in for the week starting ${monday}.`,
+    `Weekly wrap, boys. Mon through now on the table.`
+  ], seed));
+
+  if (workKing && workKing.workouts > 0) {
+    parts.push(`${workKing.name} leads workouts at ${workKing.workouts} days. The rest of you, notes.`);
+  } else {
+    parts.push('Nobody has a real workout day on the board this week. Embarrassing.');
+  }
+
+  if (stepKing && stepKing.steps > 0) {
+    parts.push(`${stepKing.name} is carrying steps at ${stepKing.steps.toLocaleString('en-AU')}.`);
+  }
+
+  if (chalKing && chalKing.challengeTicks > 0) {
+    parts.push(`Challenge iron man: ${chalKing.name} with ${chalKing.challengeTicks} ticks.`);
+  }
+
+  const workLine = workoutsComment(entries, users, monday, seed + 'w', todayStr);
+  if (workLine) parts.push(workLine);
+
+  parts.push(pickFrom([
+    'Finish the week like you mean it.',
+    'Still time to fix your standing before Monday. Or not. Your funeral.',
+    'One more session changes the story. Or it does not. Your call.'
+  ], seed + 'x'));
+
+  return parts.filter(Boolean).join(' ');
 }

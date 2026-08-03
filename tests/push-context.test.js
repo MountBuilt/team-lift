@@ -147,6 +147,7 @@ test('buildContext: threadWork carries the parent line so Aiden does not repeat 
 test('validateCopy accepts a complete, clean payload', () => {
   const ctx = buildContext(base);
   const copy = {
+    weeklyReport: '',
     report: `Simon carried the crew yesterday with legs and the challenge ticked while Dave went missing entirely. Today it is ${ctx.challenge.reps} ${ctx.challenge.name}, so no hiding.`,
     threadReplies: [],
     pushes: [{ userId: 'u1', kind: 'morning', title: 'Oi Simon', body: `Legs yesterday, good. Today: ${ctx.challenge.reps} ${ctx.challenge.name}. Get it done.` }]
@@ -156,7 +157,8 @@ test('validateCopy accepts a complete, clean payload', () => {
 
 test('validateCopy rejects a missing report and a missing push', () => {
   const ctx = buildContext(base);
-  const res = validateCopy({ report: '', threadReplies: [], pushes: [] }, ctx);
+  const res = validateCopy({ report: '',
+    weeklyReport: '', threadReplies: [], pushes: [] }, ctx);
   assert.equal(res.ok, false);
   const all = res.errors.join('\n');
   assert.match(all, /missing report/);
@@ -166,14 +168,16 @@ test('validateCopy rejects a missing report and a missing push', () => {
 test('validateCopy rejects an over-long report', () => {
   const ctx = buildContext(base);
   const res = validateCopy({
-    report: 'a'.repeat(REPORT_MAX + 1), threadReplies: [], pushes: [{ userId: 'u1', kind: 'morning', title: 't', body: 'b' }]
+    report: 'a'.repeat(REPORT_MAX + 1),
+    weeklyReport: '', threadReplies: [], pushes: [{ userId: 'u1', kind: 'morning', title: 't', body: 'b' }]
   }, ctx);
   assert.ok(res.errors.some(e => /report over/.test(e)));
 });
 
 test('validateCopy rejects a report that was not asked for', () => {
   const ctx = buildContext({ ...base, wantReport: false, morning: [] });
-  const res = validateCopy({ report: 'surprise', threadReplies: [], pushes: [] }, ctx);
+  const res = validateCopy({ report: 'surprise',
+    weeklyReport: '', threadReplies: [], pushes: [] }, ctx);
   assert.ok(res.errors.some(e => /not requested/.test(e)));
 });
 
@@ -192,17 +196,20 @@ test('validateCopy requires one threadReply per requested target', () => {
   });
   assert.equal(ctx.threadWork.length, 1);
 
-  const missing = validateCopy({ report: '', threadReplies: [], pushes: [] }, ctx);
+  const missing = validateCopy({ report: '',
+    weeklyReport: '', threadReplies: [], pushes: [] }, ctx);
   assert.ok(missing.errors.some(e => e.includes('missing threadReply')));
 
   const unknown = validateCopy({
-    report: '', pushes: [],
+    report: '',
+    weeklyReport: '', pushes: [],
     threadReplies: [{ target: 'nope', text: 'hi' }]
   }, ctx);
   assert.ok(unknown.errors.some(e => /unrequested threadReply/.test(e)));
 
   const dupes = validateCopy({
-    report: '', pushes: [],
+    report: '',
+    weeklyReport: '', pushes: [],
     threadReplies: [
       { target: REPORT_TARGET, text: 'one' },
       { target: REPORT_TARGET, text: 'two' }
@@ -211,7 +218,8 @@ test('validateCopy requires one threadReply per requested target', () => {
   assert.ok(dupes.errors.some(e => /duplicate threadReply/.test(e)));
 
   const good = validateCopy({
-    report: '', pushes: [],
+    report: '',
+    weeklyReport: '', pushes: [],
     threadReplies: [{ target: REPORT_TARGET, text: 'Fair call Simon, this week is the board that matters.' }]
   }, ctx);
   assert.deepEqual(good, { ok: true, errors: [] });
@@ -221,6 +229,7 @@ test('validateCopy rejects em-dashes and "gym"', () => {
   const ctx = buildContext(base);
   const res = validateCopy({
     report: 'Went to the gym — it was great.',
+    weeklyReport: '',
     threadReplies: [],
     pushes: [{ userId: 'u1', kind: 'morning', title: 'Oi', body: 'Fine body copy here.' }]
   }, ctx);
@@ -247,6 +256,7 @@ test('validateCopy blocks an absolute weight in any slot', () => {
   const ctx = buildContext(base);
   const res = validateCopy({
     report: 'Simon is parked on 88 kg and will not shift.',
+    weeklyReport: '',
     threadReplies: [],
     pushes: [{ userId: 'u1', kind: 'morning', title: 'Oi', body: 'Down half a kilo, keep rolling.' }]
   }, ctx);
@@ -257,7 +267,7 @@ test('validateCopy blocks an absolute weight in any slot', () => {
 test('copySchema is a strict object schema with no dynamic keys', () => {
   const s = copySchema();
   assert.equal(s.additionalProperties, false);
-  assert.deepEqual(s.required.sort(), ['pushes', 'report', 'threadReplies']);
+  assert.deepEqual(s.required.sort(), ['pushes', 'report', 'threadReplies', 'weeklyReport']);
   assert.equal(s.properties.threadReplies.items.additionalProperties, false);
   assert.equal(s.properties.pushes.items.additionalProperties, false);
 });

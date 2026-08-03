@@ -13,13 +13,15 @@
 //   (they were disabled 2026-07-19 for exactly that reason). The old re-fire
 //   bug is fixed structurally: proactive fires only when a thread has NO Aiden
 //   message at all, so re-editing an entry can never re-trigger it.
-import { addDays, mondayOf } from './dates.js';
+import { addDays, mondayOf, weekdayIndex } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
 import { isBigEffort } from './banter.js';
 
-/** The single card-style parent. Kept as an array so callers stay generic. */
+/** Card-style parents (not feed entry ids). Kept as an array so callers stay generic. */
 export const REPORT_TARGET = 'report';
-export const CARD_TARGETS = [REPORT_TARGET];
+/** Sunday weekly recap parent (Phase 4.3). */
+export const WEEKLY_TARGET = 'weekly';
+export const CARD_TARGETS = [REPORT_TARGET, WEEKLY_TARGET];
 
 export const USER_MSG_MAX = 160;
 export const AIDEN_MSG_MAX = 240;
@@ -35,6 +37,17 @@ export const hhmm = (now) => `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 export function needsDailyReport(reportDay, today, now) {
   if (reportDay === today) return false;
   return hhmm(now) >= DAILY_REPORT_AFTER;
+}
+
+/**
+ * Sunday weekly recap due after 03:00 when we have not yet written for this
+ * week's monday key. Self-heals if the host slept through Sunday morning.
+ * weekdayIndex Sunday === 6 (Mon=0).
+ */
+export function needsWeeklyReport(weeklyWeekKey, today, now) {
+  if (weekdayIndex(today) !== 6) return false;
+  if (hhmm(now) < DAILY_REPORT_AFTER) return false;
+  return weeklyWeekKey !== mondayOf(today);
 }
 
 /** Messages shown in the UI (soft-deleted hidden). */
@@ -177,13 +190,13 @@ export function collectThreadJobs({ threads, entries, today }) {
     return e && isCommentWorthy(e, list, monday) ? [e] : [];
   };
 
-  // 1. The report parent.
+  // 1. Card parents (morning report + weekly recap).
   for (const key of CARD_TARGETS) {
     const pending = pendingForThread(tmap[key]);
     if (pending.hasWork) {
       jobs.set(key, {
         target: key,
-        kind: 'report',
+        kind: key === WEEKLY_TARGET ? 'weekly' : 'report',
         newUser: pending.newUser,
         deletesToAck: pending.deletesToAck,
         worthy: []
@@ -213,9 +226,9 @@ export function collectThreadJobs({ threads, entries, today }) {
  * stored "workouts: Simon bantered (2 msgs)", which gave Aiden nothing to call
  * back to, so the memory feature did literally nothing.
  */
-export function digestCardThreads(threads, day) {
+export function digestCardThreads(threads, day, targets = CARD_TARGETS) {
   const lines = [];
-  for (const key of CARD_TARGETS) {
+  for (const key of targets) {
     for (const m of visibleMessages(threads?.[key])) {
       const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'someone');
       const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -226,9 +239,9 @@ export function digestCardThreads(threads, day) {
   return { day, lines: lines.slice(0, 8) };
 }
 
-export function wipeCardThreads(threads) {
+export function wipeCardThreads(threads, targets = CARD_TARGETS) {
   const next = { ...(threads || {}) };
-  for (const key of CARD_TARGETS) delete next[key];
+  for (const key of targets) delete next[key];
   return next;
 }
 

@@ -317,7 +317,9 @@ Pure aggregation helpers in `js/lib/aggregate.js` (or thin wrappers) + tests if 
 
 ## 4.3 Sunday / weekly Aiden recap (optional SuperGrok)
 
-- [ ] Deferred: ship after NUC cutover is solid; not in this Phase 4 drop
+- [x] `needsWeeklyReport` Sunday after 03:00; `weeklyReport` on banter doc
+- [x] Same model call as other tick jobs; thread target `weekly`
+- [x] Spec: `docs/superpowers/specs/2026-08-03-weekly-recap-design.md`
 
 ## 4.4 Banter pool refresh
 

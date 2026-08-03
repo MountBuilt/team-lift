@@ -7,8 +7,10 @@ import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from 
 import {
   pickFrom, CHALLENGE_QUIPS, todayBoardMembers, loggedToday, logNudgeLine
 } from '../lib/banter.js';
-import { templateReport, reportFresh } from '../lib/report.js';
-import { REPORT_TARGET } from '../lib/threads.js';
+import {
+  templateReport, reportFresh, templateWeeklyReport, weeklyReportFresh
+} from '../lib/report.js';
+import { REPORT_TARGET, WEEKLY_TARGET } from '../lib/threads.js';
 import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
 import { pushSupported } from '../push.js';
@@ -50,6 +52,26 @@ function reportCard(state, today) {
       <span class="eyebrow text-neutral-600">Yesterday</span>
     </div>
     ${threadBlockHtml(REPORT_TARGET, esc(text), state.banter, { parentClass: 'report-parent' })}`;
+}
+
+/** Sunday week recap (AI or template). Thread target `weekly`. */
+function weeklyCard(state, today) {
+  const stored = state.banter?.weeklyReport;
+  const mon = mondayOf(today);
+  const isSunday = today === addDays(mon, 6);
+  const fresh = weeklyReportFresh(stored, today);
+  // Fresh AI recap (this or last week), or Sunday template until the tick lands.
+  if (!fresh && !isSunday) return '';
+  const text = (fresh && stored?.text)
+    ? stored.text
+    : templateWeeklyReport(state.entries, state.users, today);
+  const label = (stored?.weekKey === mon || isSunday) ? 'This week' : 'Last week';
+  return `
+    <div class="flex items-center justify-between">
+      <h3 class="eyebrow">Aiden's week recap</h3>
+      <span class="eyebrow text-neutral-600">${esc(label)}</span>
+    </div>
+    ${threadBlockHtml(WEEKLY_TARGET, esc(text), state.banter, { parentClass: 'report-parent' })}`;
 }
 
 function headerHtml(c, today) {
@@ -407,6 +429,10 @@ export function renderDashboard(container, state, {
       ${coach ? card(coach, nextFx(), 'push-coach-card border-edge') : ''}
       ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
       ${card(reportCard(state, today), nextFx(), 'report-card')}
+      ${(() => {
+        const w = weeklyCard(state, today);
+        return w ? card(w, nextFx(), 'weekly-card') : '';
+      })()}
       ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
       ${card(awardsHtml(state, monday), nextFx(), 'awards-card')}
       <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">

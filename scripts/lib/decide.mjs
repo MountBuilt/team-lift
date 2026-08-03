@@ -6,7 +6,7 @@
 // 03:00), feed lines are local templates written by the client, and thread work
 // is driven by `config/banter.pendingAt`. Hashing every entry on every tick was
 // only ever there to decide whether to rewrite AI feed lines.
-import { needsDailyReport } from '../../js/lib/threads.js';
+import { needsDailyReport, needsWeeklyReport } from '../../js/lib/threads.js';
 
 export const MORNING_AFTER = '07:30';
 export const MORNING_CUTOFF = '20:30'; // a fully missed morning is skipped, never sent at night
@@ -32,6 +32,7 @@ const minutesSince = (iso, now) => {
 export function probeWork({ banter, pushState, now, today }) {
   const t = hhmm(now);
   const wantReport = needsDailyReport(banter?.reportDay, today, now);
+  const wantWeekly = needsWeeklyReport(banter?.weeklyReport?.weekKey, today, now);
 
   const pendingAt = banter?.pendingAt ?? '';
   const scanAt = banter?.threadScanAt ?? '';
@@ -47,13 +48,14 @@ export function probeWork({ banter, pushState, now, today }) {
 
   return {
     wantReport,
+    wantWeekly,
     threadsPossible,
     unseenComment,
     scanStale,
     morningDue,
     eveningDue,
     skipMorning,
-    needsFullFetch: wantReport || threadsPossible || morningDue || eveningDue || skipMorning
+    needsFullFetch: wantReport || wantWeekly || threadsPossible || morningDue || eveningDue || skipMorning
   };
 }
 

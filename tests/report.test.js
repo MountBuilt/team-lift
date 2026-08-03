@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  weightDelta, yesterdaySummary, templateReport, reportFresh
+  weightDelta, yesterdaySummary, templateReport, reportFresh,
+  weeklyReportFresh, templateWeeklyReport
 } from '../js/lib/report.js';
 import { dailyChallenge } from '../js/lib/challenge.js';
 import { findAbsoluteWeight } from '../scripts/lib/context.mjs';
@@ -94,4 +95,27 @@ test('reportFresh accepts today and yesterday, rejects older or missing', () => 
   assert.equal(reportFresh({ day: TODAY, text: '' }, TODAY), false);
   assert.equal(reportFresh(null, TODAY), false);
   assert.equal(reportFresh({ text: 'x' }, TODAY), false);
+});
+
+test('weeklyReportFresh accepts this week or last week only', () => {
+  // 2026-08-03 Mon; this week mon 2026-08-03, last 2026-07-27
+  assert.equal(weeklyReportFresh({ weekKey: '2026-08-03', text: 'hi' }, '2026-08-03'), true);
+  assert.equal(weeklyReportFresh({ weekKey: '2026-07-27', text: 'hi' }, '2026-08-03'), true);
+  assert.equal(weeklyReportFresh({ weekKey: '2026-07-20', text: 'hi' }, '2026-08-03'), false);
+  assert.equal(weeklyReportFresh(null, '2026-08-03'), false);
+});
+
+test('templateWeeklyReport is non-empty and has no absolute kg or em-dash', () => {
+  const users = [
+    { id: 'u1', name: 'Sam', color: '#f97316' },
+    { id: 'u2', name: 'Alex', color: '#22d3ee' }
+  ];
+  const entries = [
+    { userId: 'u1', name: 'Sam', date: '2026-08-03', steps: 5000, workoutParts: ['legs'] },
+    { userId: 'u2', name: 'Alex', date: '2026-08-04', steps: 12000, dailyChallenge: true }
+  ];
+  const text = templateWeeklyReport(entries, users, '2026-08-09'); // Sunday
+  assert.ok(text.length > 40, text);
+  assert.ok(!text.includes('—'));
+  assert.ok(!/\b\d{2,3}\s*kg\b/i.test(text), text);
 });

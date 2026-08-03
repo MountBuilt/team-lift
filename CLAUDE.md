@@ -26,6 +26,7 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
   `docs/superpowers/specs/2026-07-26-morning-report-design.md` — **source of
   truth** for Aiden, the feed, and the tick.
 - NUC tick ops: `docs/ops-nuc.md`
+- Sunday weekly recap: `docs/superpowers/specs/2026-08-03-weekly-recap-design.md`
 
 ## Commands
 - Unit tests: `node --test` (auto-discovers `tests/*.test.js`; Node 26 rejects a bare `tests/` directory argument)
@@ -59,6 +60,9 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 - Peer reactions live on `entries/{id}.reactions` as `{ [userId]: emoji }`
   (fixed set 🔥💀👏😂), written with FieldPath per user. Client-only; no tick
   involvement. Weekly awards are pure client functions over Mon–Sun.
+- Sunday weekly recap: `config/banter.weeklyReport` + thread target `weekly`,
+  same one-call-per-tick as the morning report. Spec:
+  `docs/superpowers/specs/2026-08-03-weekly-recap-design.md`.
 - **Never publish an absolute weight in kg.** Deltas and trends only, in the
   charts and in the banter. The copywriter context carries `weightDelta` and
   never a raw weight, so the model cannot leak one; `findAbsoluteWeight()` in

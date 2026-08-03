@@ -33,8 +33,9 @@ import { generateCopy, backendName, modelFor } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
-  applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET
+  applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET
 } from '../js/lib/threads.js';
+import { mondayOf } from '../js/lib/dates.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -115,26 +116,35 @@ async function main() {
   }
 
   // Threads as they should look before Aiden speaks: stale feed threads dropped,
-  // and on the daily path the report thread digested into memory then wiped.
+  // and on report/weekly rewrite paths only those parents are digested + wiped
+  // (do not wipe the other card when only one is due).
   const buildThreads = (raw) => {
     let t = purgeStaleFeedThreads(raw || {}, { today });
-    if (probe.wantReport) t = wipeCardThreads(t);
+    if (probe.wantReport) t = wipeCardThreads(t, [REPORT_TARGET]);
+    if (probe.wantWeekly) t = wipeCardThreads(t, [WEEKLY_TARGET]);
     return t;
   };
   const threads = buildThreads(banter?.threads);
 
   let memory = trimMemory(banter?.memory || []);
   if (probe.wantReport) {
-    const digest = digestCardThreads(banter?.threads || {}, banter?.reportDay || today);
+    const digest = digestCardThreads(banter?.threads || {}, banter?.reportDay || today, [REPORT_TARGET]);
     if (digest) memory = trimMemory([...memory, digest]);
     log(`daily report due: reportDay ${banter?.reportDay ?? '(none)'} -> ${today}` +
         `${digest ? ` (digested ${digest.lines.length} comment lines to memory)` : ''}`);
+  }
+  if (probe.wantWeekly) {
+    const weekKey = mondayOf(today);
+    const digest = digestCardThreads(banter?.threads || {}, weekKey, [WEEKLY_TARGET]);
+    if (digest) memory = trimMemory([...memory, digest]);
+    log(`weekly report due: weekKey ${banter?.weeklyReport?.weekKey ?? '(none)'} -> ${weekKey}` +
+        `${digest ? ` (digested ${digest.lines.length} weekly thread lines to memory)` : ''}`);
   }
 
   const threadJobs = collectThreadJobs({ threads, entries, today });
   const work = decidePushWork({ users, entries, pushState, now, today });
 
-  log(`report=${probe.wantReport} threads=${threadJobs.length}` +
+  log(`report=${probe.wantReport} weekly=${probe.wantWeekly} threads=${threadJobs.length}` +
       `(${threadJobs.map(j => j.kind).join(',')}) ` +
       `morning=${work.morning.length} evening=${work.evening.length} ` +
       `probe=${probe.unseenComment ? 'comment' : probe.scanStale ? 'staleScan' : 'time'}`);
@@ -143,7 +153,7 @@ async function main() {
   if ((work.morningDue && work.morning.length === 0) || work.skipMorning) pushStatePatch.lastMorning = today;
   if (work.eveningDue && work.evening.length === 0) pushStatePatch.lastEvening = today;
 
-  const needCopy = probe.wantReport || threadJobs.length > 0 ||
+  const needCopy = probe.wantReport || probe.wantWeekly || threadJobs.length > 0 ||
     work.morning.length > 0 || work.evening.length > 0;
 
   if (!needCopy) {
@@ -166,6 +176,7 @@ async function main() {
     challengeStart: challengeCfg?.startDate ?? today,
     today,
     wantReport: probe.wantReport,
+    wantWeekly: probe.wantWeekly,
     threadJobs,
     morning: work.morning,
     evening: work.evening,
@@ -210,8 +221,14 @@ async function main() {
     paths.push('report', 'reportDay', 'reportHistory');
   }
 
+  const weeklyText = (copy.weeklyReport || '').trim();
+  if (probe.wantWeekly && weeklyText) {
+    obj.weeklyReport = { weekKey: mondayOf(today), day: today, text: weeklyText };
+    paths.push('weeklyReport');
+  }
+
   await writeBanter(obj, paths, plan);
-  log(`banter written: report=${Boolean(obj.report)} ` +
+  log(`banter written: report=${Boolean(obj.report)} weekly=${Boolean(obj.weeklyReport)} ` +
       `threadSets=[${Object.keys(plan.sets).join(',')}] threadDeletes=[${plan.deletes.join(',')}]`);
 
   await dropLegacyFields(fresh ?? banter);

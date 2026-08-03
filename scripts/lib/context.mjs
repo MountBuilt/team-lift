@@ -14,7 +14,9 @@ import { dailyChallenge, challengeStreak } from '../../js/lib/challenge.js';
 import { addDays, mondayOf } from '../../js/lib/dates.js';
 import { restDayStatus, feedLine } from '../../js/lib/banter.js';
 import { yesterdaySummary, weightDelta } from '../../js/lib/report.js';
-import { thisWeekStandings, AIDEN_MSG_MAX, REPORT_TARGET } from '../../js/lib/threads.js';
+import {
+  thisWeekStandings, AIDEN_MSG_MAX, REPORT_TARGET, WEEKLY_TARGET
+} from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
 export const REPORT_MAX = 700;
@@ -71,13 +73,14 @@ export function moodFor(seed) {
 /**
  * @param {object} opts
  * @param {boolean} opts.wantReport   true on the ~3am daily path
+ * @param {boolean} opts.wantWeekly   true Sunday after 03:00 when week recap due
  * @param {object[]} opts.threadJobs  from collectThreadJobs
  * @param {object[]} opts.morning     users due a morning push
  * @param {object[]} opts.evening     users due an evening push
  */
 export function buildContext({
   users, entries, banter, challengeStart, today,
-  wantReport = false, threadJobs = [], morning = [], evening = [], seed = 0
+  wantReport = false, wantWeekly = false, threadJobs = [], morning = [], evening = [], seed = 0
 }) {
   const monday = mondayOf(today);
   const yesterday = addDays(today, -1);
@@ -86,15 +89,17 @@ export function buildContext({
 
   const jobs = [];
   if (wantReport) jobs.push('report');
+  if (wantWeekly) jobs.push('weeklyReport');
   if (threadJobs.length) jobs.push('threads');
   if (morning.length || evening.length) jobs.push('pushes');
 
   const threadWork = threadJobs.map(job => {
     const thread = banter?.threads?.[job.target];
     const entry = entries.find(e => e.id === job.target);
-    const parent = job.target === REPORT_TARGET
-      ? (banter?.report?.text ?? null)
-      : (entry ? `${entry.name} ${feedLine(entry)}` : null);
+    let parent = null;
+    if (job.target === REPORT_TARGET) parent = banter?.report?.text ?? null;
+    else if (job.target === WEEKLY_TARGET) parent = banter?.weeklyReport?.text ?? null;
+    else if (entry) parent = `${entry.name} ${feedLine(entry)}`;
     const live = (thread?.messages || []).filter(m => m.deleted !== true);
     // How deep this conversation is. Turn 1 is where the stats belong; after
     // that the crew wants a bloke in the chat, not a scoreboard on a loop.
@@ -154,6 +159,7 @@ export function buildContext({
       .map(s => ({ id: s.id, subject: s.subject, until: s.until, note: s.note })),
     previousReport: banter?.report?.text ?? null,
     reportHistory: (banter?.reportHistory ?? []).slice(-5),
+    previousWeeklyReport: banter?.weeklyReport?.text ?? null,
     // Only content-bearing digests. Pre-2026-07-26 entries look like
     // {notes: ["workouts: Simon bantered (2 msgs)"]} — metadata with nothing to
     // call back to. Withhold them rather than hand Aiden noise; they age out of
@@ -208,6 +214,7 @@ const asString = (v) => (typeof v === 'string' ? v : '');
 export function validateCopy(copy, context) {
   const errors = [];
   const wantReport = context.jobs.includes('report');
+  const wantWeekly = context.jobs.includes('weeklyReport');
 
   const report = asString(copy?.report).trim();
   if (wantReport) {
@@ -216,6 +223,16 @@ export function validateCopy(copy, context) {
     else banned(report, 'report', errors);
   } else if (report) {
     errors.push('report returned but not requested');
+  }
+
+  const weeklyReport = asString(copy?.weeklyReport).trim();
+  if (wantWeekly) {
+    if (!weeklyReport) errors.push('missing weeklyReport');
+    else if (weeklyReport.length > REPORT_MAX) {
+      errors.push(`weeklyReport over ${REPORT_MAX} chars (got ${weeklyReport.length})`);
+    } else banned(weeklyReport, 'weeklyReport', errors);
+  } else if (weeklyReport) {
+    errors.push('weeklyReport returned but not requested');
   }
 
   const replies = Array.isArray(copy?.threadReplies) ? copy.threadReplies : [];
@@ -262,6 +279,7 @@ export function copySchema() {
     type: 'object',
     properties: {
       report: { type: 'string' },
+      weeklyReport: { type: 'string' },
       threadReplies: {
         type: 'array',
         items: {
@@ -286,7 +304,7 @@ export function copySchema() {
         }
       }
     },
-    required: ['report', 'threadReplies', 'pushes'],
+    required: ['report', 'weeklyReport', 'threadReplies', 'pushes'],
     additionalProperties: false
   };
 }

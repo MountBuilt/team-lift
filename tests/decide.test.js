@@ -155,3 +155,39 @@ test('evening already sent today does nothing', () => {
   assert.equal(w.eveningDue, false);
   assert.deepEqual(w.evening, []);
 });
+
+test('weekly report wakes the probe on Sunday after 03:00', () => {
+  // 2026-08-02 Sunday
+  const now = new Date(2026, 7, 2, 4, 0);
+  const today = '2026-08-02';
+  const p = probeWork({
+    banter: {
+      reportDay: today,
+      threadScanAt: new Date(now.getTime() - 60000).toISOString(),
+      pendingAt: new Date(now.getTime() - 300000).toISOString()
+    },
+    pushState: { lastMorning: today, lastEvening: today },
+    now,
+    today
+  });
+  assert.equal(p.wantWeekly, true);
+  assert.equal(p.needsFullFetch, true);
+});
+
+test('weekly report does not fire mid-week', () => {
+  const now = new Date(2026, 7, 4, 10, 0); // Tue
+  const today = '2026-08-04';
+  const p = probeWork({
+    banter: {
+      reportDay: today,
+      weeklyReport: { weekKey: '2026-07-27', text: 'old' },
+      threadScanAt: new Date(now.getTime() - 60000).toISOString(),
+      pendingAt: new Date(now.getTime() - 300000).toISOString()
+    },
+    pushState: { lastMorning: today, lastEvening: today },
+    now,
+    today
+  });
+  assert.equal(p.wantWeekly, false);
+  assert.equal(p.needsFullFetch, false);
+});

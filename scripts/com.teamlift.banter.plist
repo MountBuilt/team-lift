@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- DEPRECATED as production host (2026-08). Production tick is the NUC
-     systemd user timer: scripts/teamlift-banter.timer — see docs/ops-nuc.md.
-     Keep this file as historical reference for the 60s probe design. Do not
-     load it on the Mac while the NUC timer is active (double-send risk).
+<!-- DEPRECATED as production host (2026-08). Production is the NUC:
+     teamlift-banter-watch.service (event) + teamlift-banter.timer (30s safety).
+     See docs/ops-nuc.md. Do not load this on the Mac (double-send risk).
      Unload if still installed:
        launchctl unload ~/Library/LaunchAgents/com.teamlift.banter.plist
 -->

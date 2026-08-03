@@ -137,10 +137,13 @@ Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
   freshly re-read doc. Whole-map writes were destroying comments posted while
   the model was thinking. And `lastAidenAt` is stamped with the **pre-call**
   time so a mid-call comment stays pending.
-- **The tick is a 60s probe.** `probeWork()` reads two config docs and exits if
-  there is nothing to do; only then does it fetch users + entries. Clients stamp
-  `config/banter.pendingAt` (`pokeAiden()`) so a comment or a log wakes Aiden
-  within a minute or two. Don't add per-tick work that needs a full fetch.
+- **The tick is event-first + a 30s safety probe.** Clients stamp
+  `config/banter.pendingAt` (`pokeAiden()`); the NUC `teamlift-banter-watch`
+  service listens with Firestore `onSnapshot` and runs the tick immediately.
+  `teamlift-banter.timer` every 30s covers clock jobs (report/push) and missed
+  events. `probeWork()` still reads two config docs and exits if idle — stay on
+  Spark free tier (no polling loops). Don't add per-tick work that needs a full
+  fetch on every safety tick.
 - **Aiden-is-typing dots.** `aidenThinkingState()` drives a 3-dot indicator in
   the thread while a comment waits on a reply, so the crew waits instead of
   assuming they were ignored. It gives up after `THINKING_WINDOW_MINUTES` so a

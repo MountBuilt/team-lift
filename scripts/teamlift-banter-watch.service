@@ -1,0 +1,17 @@
+[Unit]
+Description=Team Lift banter event watcher (Firestore onSnapshot → tick)
+Documentation=file:%h/team-lift/docs/ops-nuc.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/team-lift
+ExecStart=/usr/bin/node %h/team-lift/scripts/watch-banter.mjs
+Environment=PATH=%h/.grok/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Free-tier safe: one document listener; no polling loop.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

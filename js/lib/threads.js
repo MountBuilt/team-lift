@@ -114,12 +114,13 @@ export function aidenHasSpoken(thread) {
 }
 
 /**
- * How long the UI claims Aiden is composing a reply. The tick runs every 60s
- * and a reply takes ~20s, so a couple of minutes is the honest window; past
- * that something is wrong (Mac asleep, tick failing) and pretending he is
- * still typing is worse than going quiet.
+ * How long the UI claims Aiden is composing a reply. Production wakes on
+ * Firestore pendingAt (usually under 1s) then SuperGrok takes ~6–20s, so most
+ * replies land well under a minute. A few minutes remains the honest fault
+ * window; past that something is wrong (NUC down, tick failing) and
+ * pretending he is still typing is worse than going quiet.
  */
-export const THINKING_WINDOW_MINUTES = 4;
+export const THINKING_WINDOW_MINUTES = 3;
 
 /**
  * Should the UI show the "Aiden is typing" dots under this thread?

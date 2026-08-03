@@ -12,6 +12,7 @@ ExecStart=/bin/bash %h/team-lift/scripts/refresh-banter.sh
 # User timers do not get a login PATH. Cover node (NodeSource / distro /
 # ~/.local/bin), nvm (script also probes), and SuperGrok (~/.grok/bin).
 Environment=PATH=%h/.grok/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=TEAM_LIFT_WAKE=timer
 # Model call + Firestore can take a bit; probe-only ticks finish in <1s.
 TimeoutStartSec=180
 

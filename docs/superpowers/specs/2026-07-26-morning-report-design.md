@@ -84,13 +84,14 @@ backstop, not the primary defence.
 
 ## The tick
 
-`scripts/orchestrator.mjs`, every 60 seconds via launchd.
+`scripts/orchestrator.mjs` on the NUC: **event-first** (Firestore `onSnapshot` on
+`config/banter.pendingAt` via `watch-banter.mjs`) plus a **30s safety timer**.
 
 1. **Probe** (`probeWork`): read `config/banter` + `config/push` only, 2
    document reads. Exit immediately when there is nothing to do — no writes, and
-   the wrapper does not even log the run. This is what makes a 60s interval
-   affordable (~2,900 reads/day against a 50k free-tier allowance) and near-live
-   replies possible.
+   the wrapper does not even log the run. The safety timer idle cost is
+   ~5.8k reads/day; the watcher is one document listener (attach + changes only),
+   so we stay on the free Spark plan. Live comments do not wait for the timer.
 2. Otherwise fetch users + entries, work out what copy is needed.
 3. **One model call** for report + all thread replies + all pushes
    (`scripts/lib/copywriter.mjs`).

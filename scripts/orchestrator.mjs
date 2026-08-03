@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Team Lift tick: Aiden's morning report, thread replies, and push sends.
-// Production: every 60s from NUC systemd user timer (teamlift-banter.timer).
+// Production (NUC):
+//   - Event wake: teamlift-banter-watch.service (Firestore onSnapshot on
+//     config/banter.pendingAt) for near-live thread replies.
+//   - Safety timer: teamlift-banter.timer every 30s for clock jobs + recovery.
 // Mac launchd (com.teamlift.banter) is deprecated reference only — see
 // docs/ops-nuc.md. This script owns every fetch, write and send;
 // scripts/lib/copywriter.mjs owns the model call.
@@ -10,7 +13,7 @@
 // SHAPE OF A TICK
 //   1. Probe: read config/banter + config/push only (2 document reads). If
 //      there is nothing to do, exit without writing anything. This is what
-//      makes a 60s interval affordable, and near-live Aiden replies possible.
+//      makes a 30s safety timer affordable on the free Spark plan.
 //   2. Otherwise fetch users + entries and work out what copy is needed.
 //   3. One model call for everything (report + all thread replies + pushes).
 //   4. Re-read config/banter, merge, and write only the fields that changed.

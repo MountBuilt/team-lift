@@ -1,13 +1,14 @@
 [Unit]
-Description=Team Lift banter tick every 60s
+Description=Team Lift banter safety timer (30s; event watcher is primary)
 Documentation=file:%h/team-lift/docs/ops-nuc.md
 
 [Timer]
-# First fire soon after boot / user session start, then every 60s after the
-# last activation. Matches the old Mac launchd StartInterval=60 so Aiden still
-# answers comments inside a minute or two.
+# Safety net for clock-driven work (morning/evening push, daily/weekly report)
+# and any missed Firestore events. Live comments are woken by
+# teamlift-banter-watch.service via onSnapshot on config/banter.pendingAt.
+# 30s keeps free-tier probe reads modest (~5.8k doc reads/day for the 2-doc idle probe).
 OnBootSec=30
-OnUnitActiveSec=60
+OnUnitActiveSec=30
 AccuracySec=5
 Persistent=true
 Unit=teamlift-banter.service

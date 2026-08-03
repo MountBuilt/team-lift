@@ -2,9 +2,10 @@
   "name": "teamlift-scripts",
   "private": true,
   "type": "module",
-  "description": "Tick tooling for the NUC systemd timer (Aiden + push). Never served by the site.",
+  "description": "Tick tooling for the NUC (event watcher + safety timer; Aiden + push). Never served by the site.",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "firebase": "^11.10.0",
     "web-push": "^3.6.7"
   }
 }

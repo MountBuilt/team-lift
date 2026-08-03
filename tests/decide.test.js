@@ -23,7 +23,7 @@ const settled = (now) => ({
   pushState: { lastMorning: TODAY, lastEvening: TODAY }
 });
 
-// ---- probeWork: the two-read early exit that makes a 60s tick affordable ----
+// ---- probeWork: the two-read early exit that makes a 30s safety timer affordable ----
 
 test('probe is idle when the report is written, pushes are sent and no comment is unseen', () => {
   const now = at(12, 0);

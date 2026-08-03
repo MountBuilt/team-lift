@@ -62,17 +62,17 @@ export async function saveEntry(userId, userName, date, fields) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { mergeFields: ['userId', 'name', 'date', 'updatedAt', 'createdAt', ...Object.keys(fields)] });
-  // Wake the tick so Aiden reacts to a big log within a minute or so instead of
-  // on the next hour. Best-effort: a failure here just means the normal
-  // stale-scan sweep picks it up (see scripts/lib/decide.mjs).
+  // Wake the NUC event watcher (onSnapshot on pendingAt) so Aiden reacts to a
+  // big log within seconds. Best-effort: a failure here just means the 30s
+  // safety timer / stale-scan sweep picks it up (see scripts/lib/decide.mjs).
   pokeAiden().catch(() => {});
 }
 
 /**
- * Stamp `config/banter.pendingAt`. The orchestrator's cheap probe compares it
- * against `threadScanAt` to decide whether a tick needs to fetch anything at
- * all, which is what lets the job run every 60s for ~2 document reads when
- * idle. See scripts/lib/decide.mjs probeWork().
+ * Stamp `config/banter.pendingAt`. The NUC watcher listens for advances of this
+ * field and runs the tick immediately. The orchestrator's cheap probe also
+ * compares it against `threadScanAt` so idle safety-timer ticks stay at 2
+ * document reads. See scripts/lib/decide.mjs probeWork().
  */
 export async function pokeAiden() {
   await setDoc(doc(db, 'config', 'banter'),

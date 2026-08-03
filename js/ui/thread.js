@@ -2,7 +2,7 @@
 // Spec: docs/superpowers/specs/2026-07-19-aiden-threads-design.md
 //
 // UX: no heavy "Reply" chrome. Tap the parent text to expand + focus compose.
-// When N ≥ 1 show "N comments"; when empty a quiet "Banter" invite (Phase 2).
+// When N ≥ 1 show "N comments"; empty threads stay chrome-free (parent only).
 // Author bin on own messages only.
 import { writeBanterThread } from '../firebase.js';
 import { state } from '../state.js';
@@ -25,6 +25,38 @@ const expandedTargets = new Set();
 // input focused when the repaint hit.
 const drafts = new Map();
 let focusedTarget = null;
+
+// Short rotating placeholders so the compose box never feels static.
+const PLACEHOLDERS = [
+  "what's on your mind?",
+  'yes mate?',
+  'type here…',
+  'here we go again',
+  'this will be good',
+  'give it to me',
+  'asl?',
+  'shoot',
+  'you swiping or tapping',
+  'nice keypad',
+  'go on then',
+  'spill it',
+  "don't hold back",
+  'hit me',
+  'your move',
+  'say something',
+  "what's the goss",
+  'lay it on me',
+  'come on then',
+  'alright, talk',
+];
+
+function composePlaceholder(target) {
+  // Stable per open target so re-renders don't flicker the copy mid-type.
+  let h = 5381;
+  const s = String(target || '');
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return PLACEHOLDERS[h % PLACEHOLDERS.length];
+}
 
 function restoreCompose(panel, target) {
   const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
@@ -57,17 +89,17 @@ function allThreads(banter) {
 
 /**
  * Tappable parent + optional comment count + expandable thread.
+ * Empty threads have no extra chrome — just the parent text to tap.
+ * Once a chat has started, show "N comments".
  * @param {string} [opts.parentClass='coach'] - `coach` (card italics) or
  *   `feed-parent` (recent activity: roman, name+line inline).
  */
 export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach' } = {}) {
   const n = commentCount(threadOf(banter, target));
-  // Empty threads still need a discoverable affordance (Phase 2); keep it quiet.
   const count = n > 0
     ? `<button type="button" class="thread-count" data-thread-target="${esc(target)}"
          aria-expanded="false">${n} comment${n === 1 ? '' : 's'}</button>`
-    : `<button type="button" class="thread-count thread-invite" data-thread-target="${esc(target)}"
-         aria-expanded="false">Banter</button>`;
+    : '';
   return `
     <div class="thread-wrap" data-thread-root="${esc(target)}">
       <div class="thread-parent ${parentClass}" data-thread-target="${esc(target)}" role="button" tabindex="0">
@@ -120,7 +152,7 @@ function panelHtml(target, banter, meId) {
     </div>
     <div class="thread-compose">
       <textarea class="thread-input" data-thread-input="${esc(target)}"
-        maxlength="${USER_MSG_MAX}" rows="3" placeholder="Banter back…"></textarea>
+        maxlength="${USER_MSG_MAX}" rows="3" placeholder="${esc(composePlaceholder(target))}"></textarea>
       <button type="button" class="thread-send" data-thread-send="${esc(target)}"
         aria-label="Send">▶</button>
     </div>`;
@@ -157,11 +189,12 @@ function isExpanded(root, target) {
   return panel && !panel.classList.contains('hidden');
 }
 
-async function sendMessage(target, text) {
+/** Append to local state and return the thread for write. Null if nothing to send. */
+function stageUserMessage(target, text) {
   const me = state.currentUser;
-  if (!me) return;
+  if (!me) return null;
   const trimmed = text.trim().slice(0, USER_MSG_MAX);
-  if (!trimmed) return;
+  if (!trimmed) return null;
   const banter = state.banter || {};
   const threads = allThreads(banter);
   const msg = {
@@ -174,11 +207,9 @@ async function sendMessage(target, text) {
   };
   const thread = appendUserMessage(threads[target], msg);
   threads[target] = thread;
-  // Optimistic local state so a slow write still shows the msg on next render.
+  // Optimistic local state so the msg + typing dots paint before the write.
   state.banter = { ...banter, threads };
-  // Scoped to this one thread key: two blokes commenting on different targets
-  // (or the tick writing a reply elsewhere) no longer clobber each other.
-  await writeBanterThread(target, thread);
+  return thread;
 }
 
 async function removeMessage(target, messageId) {
@@ -221,16 +252,68 @@ function bindPanel(panel, target) {
     const text = input?.value || '';
     if (!text.trim()) return;
     send.disabled = true;
+    // Clear draft + input first. A Firestore snapshot can re-render the whole
+    // feed during the write and restoreCompose would put the old text back if
+    // the draft was still stashed — that left the box full until Aiden replied.
+    drafts.delete(target);
+    if (input) input.value = '';
+    const thread = stageUserMessage(target, text);
+    if (!thread) {
+      send.disabled = false;
+      return;
+    }
+    // Paint the staged message + typing dots immediately (before the write).
+    const liveNow = panel.isConnected
+      ? panel
+      : document.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
+    if (liveNow) renderPanel(liveNow, target);
+    // Also refresh the comment count on the root if it was empty before.
+    const root = liveNow?.closest('[data-thread-root]')
+      || document.querySelector(`[data-thread-root="${CSS.escape(target)}"]`);
+    if (root) {
+      const n = commentCount(threadOf(state.banter, target));
+      let countBtn = root.querySelector(`.thread-count[data-thread-target="${CSS.escape(target)}"]`);
+      if (n > 0 && !countBtn) {
+        countBtn = document.createElement('button');
+        countBtn.type = 'button';
+        countBtn.className = 'thread-count';
+        countBtn.dataset.threadTarget = target;
+        countBtn.setAttribute('aria-expanded', 'true');
+        const panelEl = root.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
+        panelEl?.before(countBtn);
+        // Re-bind so the new count button opens the thread.
+        countBtn.dataset.threadBound = '1';
+        countBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          if (isExpanded(root, target)) {
+            root.querySelector(`[data-thread-input="${CSS.escape(target)}"]`)?.focus();
+            return;
+          }
+          expand(root, target, state.banter, state.currentUser?.id);
+        });
+      }
+      if (countBtn) {
+        countBtn.textContent = `${n} comment${n === 1 ? '' : 's'}`;
+        countBtn.setAttribute('aria-expanded', 'true');
+      }
+    }
     try {
-      await sendMessage(target, text);
-      drafts.delete(target);
-      if (input) input.value = '';
-      // Repaint straight away so the message and the typing dots appear now,
-      // rather than waiting on the Firestore snapshot to come back.
-      renderPanel(panel, target);
+      // Scoped to this one thread key: two blokes commenting on different
+      // targets (or the tick writing a reply elsewhere) no longer clobber.
+      await writeBanterThread(target, thread);
     } catch (err) {
       console.error(err);
-      send.disabled = false;
+      // Put the text back so he can retry.
+      drafts.set(target, text);
+      const live = panel.isConnected
+        ? panel
+        : document.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
+      if (live) {
+        renderPanel(live, target);
+      } else if (input?.isConnected) {
+        input.value = text;
+        send.disabled = false;
+      }
     }
   });
   scheduleTypingClear(panel, target);

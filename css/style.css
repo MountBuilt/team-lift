@@ -120,48 +120,6 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   cursor: pointer;
 }
 .thread-count:hover { color: var(--ember); }
-/* Empty-thread invite: quieter than a count, still tappable. */
-.thread-count.thread-invite {
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: none;
-  color: #525252;
-}
-.thread-count.thread-invite:hover { color: var(--ember); }
-
-/* Peer reactions on feed rows (Phase 4). */
-.react-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.4rem;
-}
-.react-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid #2a2a2a;
-  background: #0f0f0f;
-  color: #a3a3a3;
-  font-size: 0.8rem;
-  line-height: 1.2;
-  cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease, transform 0.1s ease;
-}
-.react-btn:active { transform: scale(0.94); }
-.react-btn.react-on {
-  border-color: rgba(249, 115, 22, 0.55);
-  background: rgba(249, 115, 22, 0.12);
-  color: #fafafa;
-}
-.react-n {
-  font-size: 0.65rem;
-  font-weight: 800;
-  color: #a3a3a3;
-}
-.react-btn.react-on .react-n { color: var(--ember); }
 .thread-panel {
   margin-top: 0.5rem;
   margin-left: 0.5rem;

@@ -70,9 +70,13 @@ async function sendPush(user, payload) {
       await patchDoc(`users/${user.id}`, {
         push: { ...user.push, enabled: false, updatedAt: new Date().toISOString() }
       }, ['push']);
+      // Handled: dead sub must not block stamping the day wave.
       return true;
     }
-    log(`push to ${user.name} failed: ${err.statusCode ?? err.message}`);
+    // Prefer statusCode; fall back through message/body so empty WebPushError
+    // objects still leave a usable breadcrumb in the banter log.
+    const detail = err.statusCode ?? err.message ?? err.body ?? String(err);
+    log(`push to ${user.name} failed: ${detail}`);
     return false;
   }
 }
@@ -237,6 +241,10 @@ async function main() {
   await dropLegacyFields(fresh ?? banter);
 
   // ---- 5. pushes ----------------------------------------------------------
+  // Spec (2026-07-13): advance lastMorning/lastEvening after the wave was
+  // attempted. A single flaky endpoint must not re-spam everyone else on the
+  // next 30s tick. (All-or-nothing stamping did exactly that on 2026-08-06:
+  // Hunt/Phill failed, Simon/Pery got ~6 morning pushes in three minutes.)
   const copyFor = (u, kind) => (copy.pushes || []).find(p => p.userId === u.id && p.kind === kind);
   for (const [kind, targets, stamp] of [
     ['morning', work.morning, 'lastMorning'],
@@ -247,8 +255,11 @@ async function main() {
       const p = copyFor(u, kind);
       return sendPush(u, { title: p.title, body: p.body });
     }));
-    if (results.every(Boolean)) pushStatePatch[stamp] = today;
-    else log(`${kind}: some sends failed - will retry next tick`);
+    pushStatePatch[stamp] = today;
+    const failed = results.filter(ok => !ok).length;
+    if (failed) {
+      log(`${kind}: ${failed}/${targets.length} sends failed - day stamped anyway (no re-spam)`);
+    }
   }
   if (Object.keys(pushStatePatch).length) {
     await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));

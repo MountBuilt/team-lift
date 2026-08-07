@@ -12,16 +12,17 @@
 // to 80" even if he wanted to. validateCopy keeps a regex backstop.
 import { dailyChallenge, challengeStreak } from '../../js/lib/challenge.js';
 import { addDays, mondayOf } from '../../js/lib/dates.js';
-import { restDayStatus, feedLine } from '../../js/lib/banter.js';
+import { restDayStatus, displayFeedLine, factualFeedLine, isBigEffort } from '../../js/lib/banter.js';
 import { yesterdaySummary, weightDelta } from '../../js/lib/report.js';
 import {
-  thisWeekStandings, AIDEN_MSG_MAX, REPORT_TARGET, WEEKLY_TARGET
+  thisWeekStandings, AIDEN_MSG_MAX, FEED_LINE_MAX, REPORT_TARGET, WEEKLY_TARGET
 } from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
 export const REPORT_MAX = 700;
 export const PUSH_TITLE_MAX = 50;
 export const PUSH_BODY_MAX = 240;
+export { FEED_LINE_MAX };
 
 /** Entry as the copywriter sees it. NEVER carries absolute weight. */
 const entryView = (e, entries) => {
@@ -75,12 +76,14 @@ export function moodFor(seed) {
  * @param {boolean} opts.wantReport   true on the ~3am daily path
  * @param {boolean} opts.wantWeekly   true Sunday after 03:00 when week recap due
  * @param {object[]} opts.threadJobs  from collectThreadJobs
+ * @param {object[]} opts.feedLineJobs entries needing AI feed lines (from collectFeedLineJobs)
  * @param {object[]} opts.morning     users due a morning push
  * @param {object[]} opts.evening     users due an evening push
  */
 export function buildContext({
   users, entries, banter, challengeStart, today,
-  wantReport = false, wantWeekly = false, threadJobs = [], morning = [], evening = [], seed = 0
+  wantReport = false, wantWeekly = false, threadJobs = [], feedLineJobs = [],
+  morning = [], evening = [], seed = 0
 }) {
   const monday = mondayOf(today);
   const yesterday = addDays(today, -1);
@@ -91,6 +94,7 @@ export function buildContext({
   if (wantReport) jobs.push('report');
   if (wantWeekly) jobs.push('weeklyReport');
   if (threadJobs.length) jobs.push('threads');
+  if (feedLineJobs.length) jobs.push('feedLines');
   if (morning.length || evening.length) jobs.push('pushes');
 
   const threadWork = threadJobs.map(job => {
@@ -99,7 +103,7 @@ export function buildContext({
     let parent = null;
     if (job.target === REPORT_TARGET) parent = banter?.report?.text ?? null;
     else if (job.target === WEEKLY_TARGET) parent = banter?.weeklyReport?.text ?? null;
-    else if (entry) parent = `${entry.name} ${feedLine(entry)}`;
+    else if (entry) parent = `${entry.name} ${displayFeedLine(entry, banter)}`;
     const live = (thread?.messages || []).filter(m => m.deleted !== true);
     // How deep this conversation is. Turn 1 is where the stats belong; after
     // that the crew wants a bloke in the chat, not a scoreboard on a loop.
@@ -121,6 +125,15 @@ export function buildContext({
       entry: entry ? entryView(entry, entries) : null
     };
   });
+
+  const feedLineWork = (feedLineJobs || []).map(e => ({
+    entryId: e.id,
+    name: e.name,
+    date: e.date,
+    facts: entryView(e, entries),
+    factualPlaceholder: factualFeedLine(e),
+    bigEffort: isBigEffort(e)
+  }));
 
   const pushFor = (kind) => (u) => {
     const rest = restDayStatus(entries, u.id, today);
@@ -166,6 +179,7 @@ export function buildContext({
     // the 14-day window on their own.
     memory: (banter?.memory ?? []).filter(m => Array.isArray(m?.lines) && m.lines.length > 0),
     threadWork,
+    feedLineWork,
     pushes: [...morning.map(pushFor('morning')), ...evening.map(pushFor('evening'))]
   };
 }
@@ -270,6 +284,34 @@ export function validateCopy(copy, context) {
     if (!got.has(key)) errors.push(`missing push ${key}`);
   }
 
+  const wantFeed = context.jobs.includes('feedLines');
+  const feedOut = Array.isArray(copy?.feedLines) ? copy.feedLines : [];
+  const wantedFeedIds = new Set((context.feedLineWork || []).map(f => f.entryId));
+  const gotFeedIds = new Set();
+  if (wantFeed) {
+    for (const row of feedOut) {
+      const entryId = asString(row?.entryId);
+      const text = asString(row?.text).trim();
+      if (!wantedFeedIds.has(entryId)) {
+        errors.push(`unrequested feedLine "${entryId}"`);
+        continue;
+      }
+      if (gotFeedIds.has(entryId)) {
+        errors.push(`duplicate feedLine "${entryId}"`);
+        continue;
+      }
+      gotFeedIds.add(entryId);
+      if (!text || text.length > FEED_LINE_MAX) {
+        errors.push(`feedLine "${entryId}" empty or over ${FEED_LINE_MAX} chars`);
+      } else banned(text, `feedLine "${entryId}"`, errors);
+    }
+    for (const id of wantedFeedIds) {
+      if (!gotFeedIds.has(id)) errors.push(`missing feedLine for "${id}"`);
+    }
+  } else if (feedOut.length) {
+    errors.push('feedLines returned but not requested');
+  }
+
   return { ok: errors.length === 0, errors };
 }
 
@@ -302,9 +344,21 @@ export function copySchema() {
           required: ['userId', 'kind', 'title', 'body'],
           additionalProperties: false
         }
+      },
+      feedLines: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            entryId: { type: 'string' },
+            text: { type: 'string' }
+          },
+          required: ['entryId', 'text'],
+          additionalProperties: false
+        }
       }
     },
-    required: ['report', 'weeklyReport', 'threadReplies', 'pushes'],
+    required: ['report', 'weeklyReport', 'threadReplies', 'pushes', 'feedLines'],
     additionalProperties: false
   };
 }

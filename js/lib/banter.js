@@ -303,23 +303,11 @@ function maybeNicknameLine(seed, pool, person, avoidIdx = -1) {
   return { text: nicknameLine(nick, idx, person.name), idx };
 }
 
-// ---- Recent activity lines (rendered after the bolded name) ----
-// These are continuations of a sentence that already named the person (the
-// UI bolds the name before this text), so nickname lines here use the
-// pronoun-based continuation form, not a repeated name.
-
-const STRETCH_PLAIN = [
-  "did a bit of stretching. Adorable. Get in the squat rack and lift some actual fucking weight, princess.",
-  "logged 'stretching' as a workout. Mate. That's a warm-up, not a workout. Pick up a barbell.",
-  "had a lovely little stretch. The yoga retreat is that way, sweetheart. The iron is over here.",
-  "stretched. Again. Soft as a servo sausage roll. Go move some heavy shit.",
-  "called that a workout? The squat rack's still there, champ. Stretching doesn't count.",
-  "logged a stretch and nothing else. The bar's still loaded from yesterday, mate.",
-  "clocked off after a stretch. Big day planned, or just allergic to the barbell?",
-  "touched his toes and called it training. Pilates class is down the hall, sunshine.",
-  "reached for the sky and nothing else. The dumbbells are on the floor for a reason, mate.",
-  "had a stretch. Groundbreaking. The bar's not gonna spot itself, princess."
-];
+// ---- Recent activity lines (after the bolded name) -------------------------
+// 2026-08-07: feed parents are AI (`config/banter.feedLines[entryId]`). Until
+// the tick lands, the client shows a factual inventory only — no pep closers.
+// Kept STRETCH_ROASTS / TEN_K_LINES as nickname-shape examples for tests and
+// any offline banter that still references them; they are NOT feed parents.
 
 const STRETCH_LEAD_INS = [
   'stretched again.',
@@ -332,15 +320,8 @@ const STRETCH_LEAD_INS = [
 ];
 
 export const STRETCH_ROASTS = [
-  ...STRETCH_PLAIN,
   ...NICKNAMES.stretchOnly.map((nick, i) =>
     `${STRETCH_LEAD_INS[i % STRETCH_LEAD_INS.length]} ${nicknameLine(nick, framingIndex(`stretch${i}`, nick))}`)
-];
-
-const TEN_K_PLAIN = [
-  "claims EXACTLY 10,000 steps. Yeah righto mate, suspiciously round number that one.",
-  "logged 10,000 steps on the dot. Sure champ, and I'm the bloody Prime Minister.",
-  "hit exactly 10k steps. Not 9,987. Not 10,113. Exactly 10,000. Righto."
 ];
 
 const TEN_K_LEAD_INS = [
@@ -349,145 +330,8 @@ const TEN_K_LEAD_INS = [
 ];
 
 export const TEN_K_LINES = [
-  ...TEN_K_PLAIN,
   ...NICKNAMES.tenK.map((nick, i) =>
     `${TEN_K_LEAD_INS[i % TEN_K_LEAD_INS.length]} ${nicknameLine(nick, framingIndex(`tenk${i}`, nick))}`)
-];
-
-// Pools doubled 2026-07-26: these lines are now the instant reward for logging
-// (no AI in the feed any more), so a bloke sees them every single day. Small
-// pools read as a bot. Keep adding to these rather than reaching for the AI.
-const WORKOUT_LINES = [
-  "absolutely smashed {parts}. Weapon. 💪",
-  "punished {parts} like it owed him money.",
-  "destroyed {parts}. Get around him, boys!",
-  "hit {parts} hard. That's how it's fucking done.",
-  "flogged {parts}. Carn the big fella!",
-  "put {parts} through the wringer. The bar's still shaking.",
-  "took {parts} out the back and dealt with it. Ruthless.",
-  "went to war with {parts} and came home the winner.",
-  "made {parts} his personal problem today. Sorted.",
-  "battered {parts}. Someone check the equipment's still bolted down.",
-  "gave {parts} the full treatment. No survivors.",
-  "turned up and turned {parts} inside out. Filthy work.",
-  "did {parts} properly. No half reps, no whinging.",
-  "put his name on {parts} today. Nobody else came close.",
-  "walked in and wrecked {parts}. Bloke means business.",
-  "carved through {parts} like it was nothing. Frightening.",
-  "gave {parts} a flogging it will remember. Good man.",
-  "clocked on and cleaned up {parts}. Tradie work ethic, that.",
-  "buried {parts}. Someone say a few words.",
-  "rolled through {parts} without a squeak. Machine.",
-  "made {parts} look easy, which it bloody isn't. Respect.",
-  "went at {parts} like the bar insulted his mother.",
-  "knocked {parts} over before most of you found your shoes.",
-  // Widened Phase 4 — more variety for daily template feed lines.
-  "treated {parts} like a personal vendetta. Settled.",
-  "showed up, did {parts}, left. No drama, all business.",
-  "put a full stop on {parts}. End of discussion.",
-  "took {parts} personally and won the argument.",
-  "worked {parts} until the only thing left was respect.",
-  "lined {parts} up and knocked them down. Clean work."
-];
-
-const BIG_STEP_LINES = [
-  "racked up {steps} steps. Absolute machine.",
-  "clocked {steps} steps. Bloke is part greyhound.",
-  "walked {steps} steps. Did he take a wrong turn to Bendigo?",
-  "banked {steps} steps. The couch has filed a missing persons report.",
-  "put up {steps} steps. Legs like a bloody postie.",
-  "stacked {steps} steps. Someone check him for a motor.",
-  "burned through {steps} steps. His shoes are filing a complaint.",
-  "notched {steps} steps. That's a suburb, not a walk.",
-  "did {steps} steps. Half the crew drove less than that today.",
-  "logged {steps} steps. Absolute freight train of a day.",
-  "hit {steps} steps. Pedometer is asking for a raise.",
-  "smashed {steps} steps. The footpath still has boot prints.",
-  "dropped {steps} steps like it was a casual stroll. It wasn't."
-];
-
-const STEP_LINES = [
-  "got {steps} steps in. Keep 'em coming, legend.",
-  "banked {steps} steps. Every step is a middle finger to the couch.",
-  "notched {steps} steps. Small wins stack up, keep marching.",
-  "logged {steps} steps. That's {steps} more than the blokes still in bed.",
-  "put {steps} steps on the board. Onwards, soldier.",
-  "walked out {steps} steps. On the board is on the board.",
-  "clocked {steps} steps. Not a bad effort, now go again tomorrow.",
-  "chalked up {steps} steps. Legs did their bit today.",
-  "moved {steps} steps worth. Better than the bloke who moved none.",
-  "got {steps} steps done. Quietly building something here.",
-  "slotted {steps} steps in. Consistency over heroics.",
-  "ticked {steps} steps. Boring in the best way.",
-  "added {steps} steps to the pile. Keeps the board honest."
-];
-
-const WEIGH_LINES = [
-  "fronted the scales. Takes guts to face the truth. Good man.",
-  "weighed in. No hiding from the iron truth, and he knows it.",
-  "stepped on the scales like a man. Respect for facing the number.",
-  "faced the scales head on. That's more than half of you can say.",
-  "got on the scales without being asked twice. Take notes, lads.",
-  "fronted up to the scales. Cold tiles, warm respect.",
-  "did the weigh-in. Whatever it said, he looked at it. That counts.",
-  "put himself on the scales. Braver than most of this crew.",
-  "stood on the scales and owned it. No flinch.",
-  "weigh-in done. Accountability looks good on him.",
-  "hit the scales early. No excuses, no delays."
-];
-
-const STEP_SUFFIXES = [
-  "Chucked {steps} steps on top for good measure.",
-  "Plus {steps} steps. Greedy.",
-  "And {steps} steps to finish. Show off.",
-  "Topped it with {steps} steps. Bloke doesn't sit down.",
-  "Stacked {steps} steps on the end of it too.",
-  "Then went and walked {steps} steps. Unbelievable.",
-  "Threw in {steps} steps as a warm down. Sure mate.",
-  "And {steps} steps because apparently that wasn't enough.",
-  "Still found room for {steps} steps. Relentless.",
-  "Slipped in {steps} steps on the way out."
-];
-
-const WEIGH_SUFFIXES = [
-  "Faced the scales while he was at it. Full send.",
-  "Fronted the scales too. No hiding today.",
-  "Weighed in on top of it. Bloke's doing the lot.",
-  "And got on the scales. Full house behaviour.",
-  "Scales as well. Nothing left on the card.",
-  "Hit the scales after. Bookended the day properly.",
-  "Weigh-in tagged on. Accountability mode."
-];
-
-// Daily challenge feed lines. Solo lines carry the whole sentence; suffixes
-// tack onto a day that already logged something else.
-const CHALLENGE_SOLO_LINES = [
-  "knocked over the daily challenge. Tick. Easiest win of the day, boys.",
-  "got the daily challenge done. No excuses, just reps.",
-  "smashed the daily challenge before half of you even opened the app. Standard set.",
-  "banked the daily challenge. Loungeroom floor counts, champ. Reps are reps.",
-  "ticked the daily challenge. Simple as. The rest of you are running out of daylight.",
-  "did the daily challenge without a fuss. Take notes, fellas.",
-  "got the challenge in. Two minutes of work, all day to brag about it.",
-  "ticked the challenge off early. Bloke's already ahead of you.",
-  "did the reps. Didn't announce it, didn't need to. Now it's on the board.",
-  "banked the challenge. That's the bare minimum done properly, which is more than nothing.",
-  "challenge done. Two minutes, zero excuses, full credit.",
-  "knocked the challenge out cold. Board updated, ego intact.",
-  "daily challenge ticked. The floor did not stand a chance."
-];
-
-const CHALLENGE_SUFFIXES = [
-  "Daily challenge ticked too. Greedy bugger.",
-  "And the daily challenge on top. Full marks today.",
-  "Daily challenge done as well. No notes.",
-  "Squeezed the daily challenge in too. Overachiever.",
-  "Challenge ticked on top of it. Absolute glutton for it.",
-  "Challenge done as well. Bloke's collecting the whole set.",
-  "And the challenge reps. Leaving nothing on the table.",
-  "Ticked the challenge too, because why not.",
-  "Challenge on the side. Man of many courses.",
-  "Plus the daily challenge. Board hog."
 ];
 
 // Rotating one-liner under the dashboard challenge card, seeded by date.
@@ -517,44 +361,34 @@ const stretchOnly = (parts) => parts.length > 0 && parts.every(p => p === 'stret
 const fmtSteps = (n) => n.toLocaleString('en-AU');
 
 /**
- * The instant, local feed line. Written by the client the moment a bloke logs
- * (js/ui/feed.js) with no AI call and no waiting — this IS the reward for
- * logging, so it must never change under him afterwards. Hence the seed is
- * userId|date only: re-editing an entry keeps the same line. (It used to
- * include updatedAt, so every edit re-rolled the wording.)
+ * Instant factual placeholder while Aiden writes the real feed line.
+ * Inventory only: workout parts · steps · scales · challenge. No pep.
+ * Spec: docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md
  */
-export function feedLine(entry) {
-  const seed = `${entry.userId}|${entry.date}`;
-  const parts = hasWorkout(entry) ? entry.workoutParts : [];
-  const pieces = [];
+export function factualFeedLine(entry) {
+  const bits = [];
+  const parts = Array.isArray(entry?.workoutParts) ? entry.workoutParts : [];
+  if (parts.length > 0) bits.push(parts.join(' + '));
+  if (typeof entry?.steps === 'number') bits.push(`${fmtSteps(entry.steps)} steps`);
+  if (typeof entry?.weight === 'number') bits.push('scales');
+  if (entry?.dailyChallenge === true) bits.push('challenge');
+  return bits.join(' · ') || 'logged something';
+}
 
-  if (parts.length > 0) {
-    pieces.push(stretchOnly(parts)
-      ? pickFrom(STRETCH_ROASTS, seed + 'w')
-      : pickFrom(WORKOUT_LINES, seed + 'w').replace('{parts}', parts.join(' + ')));
-  }
-  if (typeof entry.steps === 'number') {
-    if (pieces.length === 0) {
-      const pool = entry.steps === 10000 ? TEN_K_LINES
-        : entry.steps >= 15000 ? BIG_STEP_LINES : STEP_LINES;
-      pieces.push(pickFrom(pool, seed + 's').replace('{steps}', fmtSteps(entry.steps)));
-    } else {
-      pieces.push(entry.steps === 10000
-        ? "Also 'exactly' 10,000 steps. Righto."
-        : pickFrom(STEP_SUFFIXES, seed + 's').replace('{steps}', fmtSteps(entry.steps)));
-    }
-  }
-  if (typeof entry.weight === 'number') {
-    pieces.push(pieces.length === 0
-      ? pickFrom(WEIGH_LINES, seed + 'k')
-      : pickFrom(WEIGH_SUFFIXES, seed + 'k'));
-  }
-  if (entry.dailyChallenge === true) {
-    pieces.push(pieces.length === 0
-      ? pickFrom(CHALLENGE_SOLO_LINES, seed + 'c')
-      : pickFrom(CHALLENGE_SUFFIXES, seed + 'c'));
-  }
-  return pieces.join(' ') || 'logged... something. Commit to it next time, champ.';
+/** @deprecated alias — use factualFeedLine or displayFeedLine */
+export function feedLine(entry) {
+  return factualFeedLine(entry);
+}
+
+/**
+ * What the feed row shows: AI text from banter.feedLines[entryId] when ready,
+ * otherwise the factual placeholder.
+ */
+export function displayFeedLine(entry, banter) {
+  const id = entry?.id;
+  const ai = id && banter?.feedLines?.[id]?.text;
+  if (typeof ai === 'string' && ai.trim()) return ai.trim();
+  return factualFeedLine(entry);
 }
 
 // ---- Dashboard card commentary (one line per card, rotates daily) ----

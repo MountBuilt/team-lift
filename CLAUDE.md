@@ -22,9 +22,11 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 - Push + orchestrator: `docs/superpowers/specs/2026-07-13-push-notifications-design.md`
 - Thread mechanics: `docs/superpowers/specs/2026-07-19-aiden-threads-design.md`
   (its three card parents are superseded; the thread rules still stand)
-- **Morning report + live replies (2026-07-26):**
-  `docs/superpowers/specs/2026-07-26-morning-report-design.md` — **source of
-  truth** for Aiden, the feed, and the tick.
+- Morning report + live replies (2026-07-26):
+  `docs/superpowers/specs/2026-07-26-morning-report-design.md`
+- **Home Stats + continuous report + AI feed (2026-08-07):**
+  `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md` — **source of
+  truth** for tabs, report thread lifetime, and feed parents.
 - NUC tick ops: `docs/ops-nuc.md`
 - Sunday weekly recap: `docs/superpowers/specs/2026-08-03-weekly-recap-design.md`
 
@@ -91,47 +93,41 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
   only if nothing is logged that day; state in `config/push`
   (`lastMorning`/`lastEvening`) so missed ticks self-heal and never double-send.
 
-## Aiden (2026-07-26) — do not regress
+## Aiden (2026-08-07) — do not regress
 
-Full detail: `docs/superpowers/specs/2026-07-26-morning-report-design.md`.
+Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
+(plus 2026-07-26 for tick shape and 2026-08-02 moods).
 
-- **Recent activity is template-only.** `js/ui/feed.js` always renders
-  `feedLine(entry)`, instantly, client-side, no AI. It is the reward for
-  logging, so it must never be rewritten after the fact. Freshness comes from
-  widening the pools in `js/lib/banter.js`, not from the model. The seed is
-  `userId|date`, so editing an entry keeps its line.
-- **Aiden reacts as a comment, never a rewrite, and only when spoken to
-  (2026-08-02).** Proactive `praise` jobs are gone: the template feed line is
-  already Aiden's voice, so an unprompted reply under it was him restating
-  himself, which is exactly the "canned" feeling the crew called out.
-  `collectThreadJobs` is human-led only. Don't put unprompted feed reactions
-  back.
+- **Tabs:** Dashboard (status, challenge, report preview, weekly, podium, feed)
+  | **Stats** (week tiles, workouts panel, weight + steps charts) | Me.
+  No LOG SOMETHING nudge card; (+) FAB is the log entry.
+- **Recent activity is AI.** Client shows `factualFeedLine(entry)` until the
+  tick writes `config/banter.feedLines[entryId] = { text, at }`, then that
+  line sticks (no re-roll on edit). Never fall back to stacked pep-suffix
+  templates. Max 200 chars; no absolute kg.
+- **Aiden reacts as a comment only when spoken to (2026-08-02).** Parent is
+  Aiden's voice again, so unprompted feed praise stays off. `collectThreadJobs`
+  is human-led only.
 - **Aiden has moods (2026-08-02).** `MOODS` in `scripts/lib/context.mjs`, one
-  picked per tick from `seed` (minute-of-epoch, passed by the orchestrator) and
-  handed over as `context.mood`. Several are deliberately not agreeable
-  (`combative`, `sulking`, `unhinged`, `filthy`) because the flat, even,
-  always-supportive register was the failure mode.
-- **Threads are conversations after turn 1.** `threadWork[].aidenTurns` and
-  `turnGuidance` tell the model how deep it is: turn 1 hooks to the log or the
-  report, every turn after that the stats are off the table and he is expected
-  to go off topic, push back and vary the shape. A 30-message thread of the
-  same beat is the bug this fixes.
-- **One morning report, not three card parents.** `config/banter.report`
-  ({day, text}), 300-600 chars, covers **yesterday only** across weight,
-  challenge, workouts and steps, with one thread (`target: 'report'`). Written
-  on the first tick after 03:00. Do NOT put coach lines back on the
-  weight/steps/workouts cards.
-- **Week scope:** any weekly standing quoted in copy comes from the precomputed
-  `thisWeek` (Mon–Sun), never all-time totals.
+  picked per tick from `seed` (minute-of-epoch) as `context.mood`. Includes
+  non-agreeable moods (`combative`, `sulking`, `unhinged`, `filthy`).
+- **Threads are conversations after turn 1.** `aidenTurns` / `turnGuidance`:
+  turn 1 hooks to the log or report; later turns go off topic and vary shape.
+- **Continuous morning report.** `config/banter.report` ({day, text}) still
+  holds today's pointer. Each morning Aiden **appends** a message with
+  `role: 'report'` to `threads.report` (no daily wipe). Message TTL **5 days**.
+  Home shows report body + activity strip (omit if only reports; 1 non-report
+  Aiden if solo; latest 3 once crew has spoken). Weekly recap still separate
+  and wipe-on-rewrite. Do NOT put coach lines back on chart cards.
+- **Week scope:** weekly standings from precomputed `thisWeek` (Mon–Sun) only.
 - **Threads** live on `config/banter.threads`:
-  - Keys: `report` | `{entryId}` for feed rows.
-  - Messages: `{ id, kind: 'user'|'aiden', userId?, name?, text, at, deleted? }`.
-  - User text max 160, Aiden 240. Author can bin own messages anytime.
-  - Delete **before** Aiden answers → hard remove; **after** → soft-delete, then
-    Aiden acks once and the tombstone drops.
-  - Purged on **date only** (3 days). Do not reintroduce purge-by-feed-window:
-    with 8 blokes logging daily that window is ~1.5 days, so comments were being
-    binned inside 2 days.
+  - Keys: `report` | `weekly` | `{entryId}` for feed rows.
+  - Messages: `{ id, kind: 'user'|'aiden', userId?, name?, text, at, deleted?,
+    role?, reportDay? }`.
+  - User text max 160, Aiden 240, feed line 200. Author can bin own messages.
+  - Delete **before** Aiden answers → hard remove; **after** → soft-delete.
+  - Feed threads purged on **date only** (3 days). Report messages 5 days.
+    Never whole-map PATCH of `threads` or `feedLines`.
 - **Never PATCH the whole `threads` map.** The client writes one key via
   `FieldPath`; the tick writes a per-key `threadWritePlan` computed against a
   freshly re-read doc. Whole-map writes were destroying comments posted while

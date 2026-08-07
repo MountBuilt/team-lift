@@ -8,15 +8,19 @@
 // docs/ops-nuc.md. This script owns every fetch, write and send;
 // scripts/lib/copywriter.mjs owns the model call.
 //
-// Spec: docs/superpowers/specs/2026-07-26-morning-report-design.md
+// Specs: docs/superpowers/specs/2026-07-26-morning-report-design.md
+//        docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md
 //
 // SHAPE OF A TICK
 //   1. Probe: read config/banter + config/push only (2 document reads). If
 //      there is nothing to do, exit without writing anything. This is what
 //      makes a 30s safety timer affordable on the free Spark plan.
 //   2. Otherwise fetch users + entries and work out what copy is needed.
-//   3. One model call for everything (report + all thread replies + pushes).
+//   3. One model call for everything (report + weekly + threads + feedLines +
+//      pushes).
 //   4. Re-read config/banter, merge, and write only the fields that changed.
+//   Report thread is continuous (append morning post; no daily wipe). Weekly
+//   still digests+wipes. Feed parents live in banter.feedLines.
 //
 // DO NOT reintroduce whole-map `threads` writes. The client and this script
 // both used to PATCH the entire map, so any comment posted while the model was
@@ -36,7 +40,9 @@ import { generateCopy, backendName, modelFor } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
-  applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET
+  applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET,
+  appendReportMessage, purgeReportThreadMessages, collectFeedLineJobs,
+  purgeStaleFeedLines, feedLineWritePlan
 } from '../js/lib/threads.js';
 import { mondayOf } from '../js/lib/dates.js';
 import { readFileSync } from 'node:fs';
@@ -122,23 +128,20 @@ async function main() {
     process.exit(ok ? 0 : 1);
   }
 
-  // Threads as they should look before Aiden speaks: stale feed threads dropped,
-  // and on report/weekly rewrite paths only those parents are digested + wiped
-  // (do not wipe the other card when only one is due).
+  // Threads before Aiden speaks: purge stale feed threads + old report messages.
+  // Weekly still digests+wipes. Report is continuous (no wipe).
   const buildThreads = (raw) => {
     let t = purgeStaleFeedThreads(raw || {}, { today });
-    if (probe.wantReport) t = wipeCardThreads(t, [REPORT_TARGET]);
+    t = purgeReportThreadMessages(t, { today });
     if (probe.wantWeekly) t = wipeCardThreads(t, [WEEKLY_TARGET]);
     return t;
   };
   const threads = buildThreads(banter?.threads);
+  const feedLinesBase = purgeStaleFeedLines(banter?.feedLines || {}, { today });
 
   let memory = trimMemory(banter?.memory || []);
   if (probe.wantReport) {
-    const digest = digestCardThreads(banter?.threads || {}, banter?.reportDay || today, [REPORT_TARGET]);
-    if (digest) memory = trimMemory([...memory, digest]);
-    log(`daily report due: reportDay ${banter?.reportDay ?? '(none)'} -> ${today}` +
-        `${digest ? ` (digested ${digest.lines.length} comment lines to memory)` : ''}`);
+    log(`daily report due: reportDay ${banter?.reportDay ?? '(none)'} -> ${today} (append, no wipe)`);
   }
   if (probe.wantWeekly) {
     const weekKey = mondayOf(today);
@@ -149,10 +152,13 @@ async function main() {
   }
 
   const threadJobs = collectThreadJobs({ threads, entries, today });
+  const feedLineJobs = collectFeedLineJobs({
+    entries, feedLines: feedLinesBase, today
+  });
   const work = decidePushWork({ users, entries, pushState, now, today });
 
   log(`report=${probe.wantReport} weekly=${probe.wantWeekly} threads=${threadJobs.length}` +
-      `(${threadJobs.map(j => j.kind).join(',')}) ` +
+      `(${threadJobs.map(j => j.kind).join(',')}) feedLines=${feedLineJobs.length} ` +
       `morning=${work.morning.length} evening=${work.evening.length} ` +
       `probe=${probe.unseenComment ? 'comment' : probe.scanStale ? 'staleScan' : 'time'}`);
 
@@ -161,13 +167,20 @@ async function main() {
   if (work.eveningDue && work.evening.length === 0) pushStatePatch.lastEvening = today;
 
   const needCopy = probe.wantReport || probe.wantWeekly || threadJobs.length > 0 ||
+    feedLineJobs.length > 0 ||
     work.morning.length > 0 || work.evening.length > 0;
 
   if (!needCopy) {
     // Woke up for a stale-scan sweep and found nothing. Bump the scan marker so
-    // the probe goes quiet again, and flush any thread purge.
+    // the probe goes quiet again, and flush any thread / feedLine purge.
     const plan = threadWritePlan(banter?.threads || {}, threads);
-    await writeBanter({ threadScanAt: startedIso }, ['threadScanAt'], plan);
+    const flPlan = feedLineWritePlan(banter?.feedLines || {}, feedLinesBase);
+    await writeBanter(
+      { threadScanAt: startedIso },
+      ['threadScanAt'],
+      plan,
+      flPlan
+    );
     if (Object.keys(pushStatePatch).length) {
       await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
     }
@@ -179,12 +192,13 @@ async function main() {
   const context = buildContext({
     users,
     entries,
-    banter: { ...banter, threads, memory },
+    banter: { ...banter, threads, memory, feedLines: feedLinesBase },
     challengeStart: challengeCfg?.startDate ?? today,
     today,
     wantReport: probe.wantReport,
     wantWeekly: probe.wantWeekly,
     threadJobs,
+    feedLineJobs,
     morning: work.morning,
     evening: work.evening,
     // Minute-of-epoch: rotates Aiden's mood on every tick, so a thread that
@@ -210,16 +224,36 @@ async function main() {
   const replies = Object.fromEntries(
     (copy.threadReplies || []).map(r => [r.target, r.text])
   );
+  const writtenIso = new Date().toISOString();
   if (Object.keys(replies).length) {
     // lastAidenAt = startedIso (pre-call) so mid-call comments stay pending.
-    nextThreads = applyThreadReplies(nextThreads, replies, new Date().toISOString(), startedIso);
+    nextThreads = applyThreadReplies(nextThreads, replies, writtenIso, startedIso);
   }
+
+  const report = (copy.report || '').trim();
+  if (probe.wantReport && report) {
+    const t = nextThreads[REPORT_TARGET];
+    nextThreads = {
+      ...nextThreads,
+      [REPORT_TARGET]: appendReportMessage(t, { text: report, day: today, nowIso: writtenIso })
+    };
+  }
+
   const plan = threadWritePlan(fresh?.threads || {}, nextThreads);
+
+  let nextFeedLines = purgeStaleFeedLines(fresh?.feedLines || banter?.feedLines || {}, { today });
+  for (const row of copy.feedLines || []) {
+    const id = row?.entryId;
+    const text = String(row?.text || '').trim();
+    if (!id || !text) continue;
+    if (!feedLineJobs.some(e => e.id === id)) continue;
+    nextFeedLines[id] = { text, at: writtenIso };
+  }
+  const flPlan = feedLineWritePlan(fresh?.feedLines || banter?.feedLines || {}, nextFeedLines);
 
   const obj = { threadScanAt: startedIso, memory };
   const paths = ['threadScanAt', 'memory'];
 
-  const report = (copy.report || '').trim();
   if (probe.wantReport && report) {
     obj.report = { day: today, text: report };
     obj.reportDay = today;
@@ -234,9 +268,10 @@ async function main() {
     paths.push('weeklyReport');
   }
 
-  await writeBanter(obj, paths, plan);
+  await writeBanter(obj, paths, plan, flPlan);
   log(`banter written: report=${Boolean(obj.report)} weekly=${Boolean(obj.weeklyReport)} ` +
-      `threadSets=[${Object.keys(plan.sets).join(',')}] threadDeletes=[${plan.deletes.join(',')}]`);
+      `threadSets=[${Object.keys(plan.sets).join(',')}] threadDeletes=[${plan.deletes.join(',')}] ` +
+      `feedSets=[${Object.keys(flPlan.sets).join(',')}] feedDeletes=[${flPlan.deletes.join(',')}]`);
 
   await dropLegacyFields(fresh ?? banter);
 
@@ -268,16 +303,19 @@ async function main() {
 }
 
 /**
- * One PATCH for config/banter. Thread keys are written individually; keys in
- * the mask but absent from the body are deleted by Firestore, which is how
- * purged and wiped threads disappear without touching the rest of the map.
+ * One PATCH for config/banter. Thread and feedLine keys are written
+ * individually; keys in the mask but absent from the body are deleted by
+ * Firestore, which is how purged keys disappear without whole-map stomps.
  */
-async function writeBanter(obj, paths, plan) {
+async function writeBanter(obj, paths, plan, feedPlan = { sets: {}, deletes: [] }) {
   const body = { ...obj };
   const mask = [...paths];
   if (Object.keys(plan.sets).length) body.threads = plan.sets;
   for (const key of Object.keys(plan.sets)) mask.push(maskPath('threads', key));
   for (const key of plan.deletes) mask.push(maskPath('threads', key));
+  if (Object.keys(feedPlan.sets).length) body.feedLines = feedPlan.sets;
+  for (const key of Object.keys(feedPlan.sets)) mask.push(maskPath('feedLines', key));
+  for (const key of feedPlan.deletes) mask.push(maskPath('feedLines', key));
   await patch('config/banter', body, mask);
 }
 

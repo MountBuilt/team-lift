@@ -1,23 +1,16 @@
 import { groupFeedByDay } from '../lib/aggregate.js';
-import { feedLine, effortLabel, isBigEffort } from '../lib/banter.js';
+import { displayFeedLine, effortLabel, isBigEffort } from '../lib/banter.js';
 import { todayStr } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
 
 /**
- * Recent activity. The line is ALWAYS the local template (js/lib/banter.js
- * feedLine) so it appears the instant a bloke saves, with no AI call and no
- * waiting. That instant callout is the reward for logging, and it is the point
- * of this panel.
- *
- * Before 2026-07-26 an AI line overwrote it on the next hourly tick, which
- * meant the text visibly changed under him up to an hour later, cost a model
- * call per entry (9-22 a day), and produced the repetition the crew noticed
- * (70 of 110 stored lines mentioned the scales). Aiden now reacts as a COMMENT
- * in the thread underneath instead, which is additive and never rewrites.
+ * Recent activity. Factual placeholder until Aiden's line lands in
+ * banter.feedLines[entryId], then the AI line sticks. Spec:
+ * docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md
  *
  * Tap the parent text to open the thread. Comment count only shows once a
- * chat has started. `banter` is the full config/banter doc (threads live there).
+ * chat has started.
  */
 export function renderFeed(container, entries, users = [], banter = null) {
   const groups = groupFeedByDay(entries, todayStr(), 12);
@@ -26,7 +19,7 @@ export function renderFeed(container, entries, users = [], banter = null) {
       <p class="text-sm text-neutral-400">Dead quiet. Someone has to open the board, might as well be you.</p>
       <button type="button" id="feed-empty-log"
         class="pressable mt-3 w-full rounded-xl border border-edge py-2.5 text-sm font-black text-accent">
-        LOG SOMETHING</button>`;
+        LOG IT</button>`;
     container.querySelector('#feed-empty-log')?.addEventListener('click', () => {
       import('./logmodal.js').then(m => m.openLogModal());
     });
@@ -39,10 +32,12 @@ export function renderFeed(container, entries, users = [], banter = null) {
     const badge = isBigEffort(e)
       ? `<span class="ml-1 rounded bg-accent/15 px-1.5 py-0.5 align-middle text-[10px] font-black tracking-wider text-accent">${esc(effortLabel(e))}</span>`
       : '';
+    const line = displayFeedLine(e, banter);
+    const isAi = Boolean(banter?.feedLines?.[e.id]?.text?.trim?.());
     // Name + banter on one line (no separate name row / no italics).
     const parentHtml =
       `<span class="font-bold" style="color:${color}">${esc(e.name)}</span>${badge} ` +
-      `<span class="feed-line-text">${esc(feedLine(e))}</span>`;
+      `<span class="feed-line-text${isAi ? '' : ' text-neutral-400'}">${esc(line)}</span>`;
     const banterParent = threadBlockHtml(e.id, parentHtml, banter, { parentClass: 'feed-parent' });
     return `
       <div class="flex items-start gap-3 py-2.5 border-b border-edge/60 last:border-0">

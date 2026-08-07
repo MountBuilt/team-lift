@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  pickFrom, feedLine, stepsComment, workoutsComment, weightComment,
+  pickFrom, feedLine, factualFeedLine, displayFeedLine,
+  stepsComment, workoutsComment, weightComment,
   nicknameLine, STRETCH_ROASTS, TEN_K_LINES, NICKNAMES, CHALLENGE_QUIPS,
   hasAnyLog, emptyDayStreak, restDayStatus, REST_GRACE_DAYS,
   isBigEffort, effortLabel, EFFORT_LABELS,
@@ -49,37 +50,29 @@ test('effortLabel is stable and drawn from the bank', () => {
   assert.ok(labels.size > 1);
 });
 
-test('feedLine is stable for the same entry', () => {
-  const entry = e('u1', '2026-07-08', { workoutParts: ['legs', 'chest'], updatedAt: 42 });
-  assert.equal(feedLine(entry), feedLine(entry));
+test('factualFeedLine is a plain inventory (no pep closers)', () => {
+  const entry = e('u1', '2026-07-08', {
+    id: 'u1_2026-07-08',
+    workoutParts: ['legs', 'chest'], steps: 12345, weight: 90, dailyChallenge: true
+  });
+  const line = factualFeedLine(entry);
+  assert.equal(line, 'legs + chest · 12,345 steps · scales · challenge');
+  assert.ok(!/end of discussion|bookended|many courses/i.test(line));
+  assert.equal(feedLine(entry), line);
 });
 
-test('feedLine roasts stretching-only workouts', () => {
-  const entry = e('u1', '2026-07-08', { workoutParts: ['stretching'], updatedAt: 7 });
-  assert.ok(STRETCH_ROASTS.includes(feedLine(entry)));
+test('factualFeedLine covers stretch-only and empty', () => {
+  assert.equal(factualFeedLine(e('u1', '2026-07-08', { workoutParts: ['stretching'] })), 'stretching');
+  assert.equal(factualFeedLine(e('u1', '2026-07-08')), 'logged something');
 });
 
-test('feedLine hypes a real workout and names the parts', () => {
-  const entry = e('u1', '2026-07-08', { workoutParts: ['legs', 'back'], updatedAt: 3 });
-  const line = feedLine(entry);
-  assert.ok(line.includes('legs + back'));
-  assert.ok(!STRETCH_ROASTS.includes(line));
-});
-
-test('feedLine calls out exactly 10,000 steps', () => {
-  const entry = e('u2', '2026-07-08', { steps: 10000, updatedAt: 5 });
-  assert.ok(TEN_K_LINES.includes(feedLine(entry)));
-});
-
-test('feedLine mentions steps and weigh-in alongside a workout', () => {
-  const entry = e('u1', '2026-07-08', { workoutParts: ['arms'], steps: 12345, weight: 90, updatedAt: 9 });
-  const line = feedLine(entry);
-  assert.ok(line.includes('12,345'));
-  assert.ok(/scale/i.test(line));
-});
-
-test('feedLine falls back when the entry is empty', () => {
-  assert.ok(feedLine(e('u1', '2026-07-08')).length > 0);
+test('displayFeedLine prefers AI text from banter.feedLines', () => {
+  const entry = e('u1', '2026-07-08', { id: 'u1_2026-07-08', workoutParts: ['legs'] });
+  assert.equal(displayFeedLine(entry, null), 'legs');
+  assert.equal(
+    displayFeedLine(entry, { feedLines: { 'u1_2026-07-08': { text: ' weapon work, mate', at: 't' } } }),
+    'weapon work, mate'
+  );
 });
 
 test('stepsComment: sole stepper is carrying the team', () => {
@@ -235,7 +228,7 @@ test('weightComment: coin-flip gate means some seeds skip the nickname (nobody-w
   assert.ok(sawPlain, 'expected some seeds to skip the nickname entirely');
 });
 
-test('STRETCH_ROASTS and TEN_K_LINES include full observational nickname lines (name + punchline, never a bare tag), reachable via feedLine', () => {
+test('STRETCH_ROASTS and TEN_K_LINES include full observational nickname lines (name + punchline, never a bare tag)', () => {
   for (const nick of NICKNAMES.stretchOnly) {
     const line = STRETCH_ROASTS.find(l => l.includes(nick.name));
     assert.ok(line, `expected a STRETCH_ROASTS line for ${nick.name}`);
@@ -246,17 +239,6 @@ test('STRETCH_ROASTS and TEN_K_LINES include full observational nickname lines (
     assert.ok(line, `expected a TEN_K_LINES line for ${nick.name}`);
     assert.ok(line.includes(nick.punchline), `expected the ${nick.name} line to include its punchline`);
   }
-
-  let stretchHit = false;
-  let tenKHit = false;
-  for (let i = 0; i < 50 && !(stretchHit && tenKHit); i++) {
-    const stretchLine = feedLine(e('u1', '2026-07-08', { workoutParts: ['stretching'], updatedAt: i }));
-    if (NICKNAMES.stretchOnly.some(n => stretchLine.includes(n.name))) stretchHit = true;
-    const tenKLine = feedLine(e('u2', '2026-07-08', { steps: 10000, updatedAt: i }));
-    if (NICKNAMES.tenK.some(n => tenKLine.includes(n.name))) tenKHit = true;
-  }
-  assert.ok(stretchHit, 'expected a stretch-only nickname line to be reachable');
-  assert.ok(tenKHit, 'expected a 10k nickname line to be reachable');
 });
 
 test('nicknameLine always composes a punchline, never a bare tag, and varies its framing verb by seed', () => {
@@ -302,20 +284,15 @@ test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {
   assert.deepEqual(weightAxisBounds([90]), { min: 80, max: 100 });
 });
 
-test('feedLine covers a challenge-only entry (never the "logged... something" fallback)', () => {
-  const entry = e('u1', '2026-07-10', { dailyChallenge: true, updatedAt: 5 });
-  const line = feedLine(entry);
-  // Pools say "daily challenge" or just "challenge" — either is fine.
-  assert.ok(line.toLowerCase().includes('challenge'), line);
-  assert.ok(!line.includes('logged... something'));
-  assert.equal(feedLine(entry), line); // deterministic
-});
-
-test('feedLine appends a challenge suffix when the tick rides along with other logging', () => {
-  const entry = e('u1', '2026-07-10', { workoutParts: ['legs'], dailyChallenge: true, updatedAt: 5 });
-  const line = feedLine(entry);
-  assert.ok(line.includes('legs'));
-  assert.ok(line.toLowerCase().includes('challenge'), line);
+test('factualFeedLine covers challenge-only and multi-field days', () => {
+  assert.equal(
+    factualFeedLine(e('u1', '2026-07-10', { dailyChallenge: true })),
+    'challenge'
+  );
+  assert.equal(
+    factualFeedLine(e('u1', '2026-07-10', { workoutParts: ['legs'], dailyChallenge: true })),
+    'legs · challenge'
+  );
 });
 
 test('CHALLENGE_QUIPS rotate deterministically and never contain an em-dash', () => {

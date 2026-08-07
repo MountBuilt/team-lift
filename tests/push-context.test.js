@@ -139,7 +139,8 @@ test('buildContext: threadWork carries the parent line so Aiden does not repeat 
   const reportJob = ctx.threadWork.find(t => t.target === REPORT_TARGET);
   assert.equal(reportJob.parent, 'Yesterday was quiet, boys.');
   const feedJob = ctx.threadWork.find(t => t.target === 'u1_2026-07-12');
-  assert.ok(feedJob.parent.startsWith('Simon '), 'feed parent is the local template line');
+  assert.ok(feedJob.parent.startsWith('Simon '), 'feed parent is name + factual/AI line');
+  assert.ok(feedJob.parent.includes('legs'), 'parent lists the log facts');
   assert.equal(feedJob.entry.weighedIn, true);
   assert.equal(feedJob.entry.weight, undefined, 'still no absolute weight');
 });
@@ -267,9 +268,11 @@ test('validateCopy blocks an absolute weight in any slot', () => {
 test('copySchema is a strict object schema with no dynamic keys', () => {
   const s = copySchema();
   assert.equal(s.additionalProperties, false);
-  assert.deepEqual(s.required.sort(), ['pushes', 'report', 'threadReplies', 'weeklyReport']);
+  assert.deepEqual(s.required.sort(),
+    ['feedLines', 'pushes', 'report', 'threadReplies', 'weeklyReport']);
   assert.equal(s.properties.threadReplies.items.additionalProperties, false);
   assert.equal(s.properties.pushes.items.additionalProperties, false);
+  assert.equal(s.properties.feedLines.items.additionalProperties, false);
 });
 
 test('buildContext: mood rotates with the seed', () => {

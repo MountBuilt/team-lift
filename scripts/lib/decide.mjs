@@ -1,11 +1,9 @@
 // Pure decisions for the tick: is there any work, and which pushes are due.
 // No network, no clock reads; callers pass `now` and `today`.
 //
-// 2026-07-26: the section-hash machinery (computeHashes/changedSections) is
-// gone. Nothing needs it any more — the report is time-driven (once a day after
-// 03:00), feed lines are local templates written by the client, and thread work
-// is driven by `config/banter.pendingAt`. Hashing every entry on every tick was
-// only ever there to decide whether to rewrite AI feed lines.
+// 2026-07-26: section-hash machinery gone. Report is time-driven (after 03:00).
+// Feed lines are AI again (2026-08-07) but jobs are found after full fetch when
+// poke/stale-scan already woke the tick — probe stays 2-doc cheap.
 import { needsDailyReport, needsWeeklyReport } from '../../js/lib/threads.js';
 
 export const MORNING_AFTER = '07:30';

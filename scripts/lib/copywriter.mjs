@@ -155,7 +155,8 @@ export function extractGrokCopy(stdout) {
       return envelope.structuredOutput;
     }
     // Already the copy shape (no envelope)
-    if ('threadReplies' in envelope || 'report' in envelope || 'weeklyReport' in envelope || 'pushes' in envelope) {
+    if ('threadReplies' in envelope || 'report' in envelope || 'weeklyReport' in envelope ||
+        'pushes' in envelope || 'feedLines' in envelope) {
       return envelope;
     }
     if (typeof envelope.text === 'string' && envelope.text.trim()) {
@@ -185,7 +186,8 @@ function outputInstructions() {
     '',
     'Return ONLY a JSON object with keys `report` (string, empty when not',
     'requested), `weeklyReport` (string, empty when not requested),',
-    '`threadReplies` (array of {target, text}) and `pushes` (array',
+    '`threadReplies` (array of {target, text}), `feedLines` (array of',
+    '{entryId, text}, empty when not requested) and `pushes` (array',
     'of {userId, kind, title, body}). No markdown fence, no commentary.'
   ].join('\n');
 }

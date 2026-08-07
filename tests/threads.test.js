@@ -6,7 +6,9 @@ import {
   digestCardThreads, wipeCardThreads, purgeStaleFeedThreads, applyThreadReplies,
   aidenThinkingState,
   threadWritePlan, deleteUserMessage, appendUserMessage,
-  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX
+  appendReportMessage, purgeReportThreadMessages, collectFeedLineJobs,
+  purgeStaleFeedLines, feedLineWritePlan, reportPreviewMessages, latestReportBody,
+  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, REPORT_THREAD_MAX_AGE_DAYS
 } from '../js/lib/threads.js';
 
 describe('needsDailyReport', () => {
@@ -422,5 +424,132 @@ describe('needsWeeklyReport', () => {
   it('false once written for this week', () => {
     const now = new Date(2026, 7, 2, 12, 0);
     assert.equal(needsWeeklyReport(monday, sunday, now), false);
+  });
+});
+
+describe('continuous report thread', () => {
+  it('appendReportMessage adds role:report without wiping history', () => {
+    const prev = {
+      messages: [
+        { id: 'old', kind: 'aiden', name: 'Aiden', text: 'Yesterday.', at: '2026-07-18T03:00:00.000Z', role: 'report', reportDay: '2026-07-18' },
+        { id: 'u1', kind: 'user', name: 'Simon', text: 'oi', at: '2026-07-18T10:00:00.000Z' }
+      ],
+      lastAidenAt: '2026-07-18T03:00:00.000Z'
+    };
+    const next = appendReportMessage(prev, {
+      text: 'Fresh morning.',
+      day: '2026-07-19',
+      nowIso: '2026-07-19T03:05:00.000Z'
+    });
+    assert.equal(next.messages.length, 3);
+    assert.equal(next.messages[0].text, 'Yesterday.');
+    assert.equal(next.messages.at(-1).role, 'report');
+    assert.equal(next.messages.at(-1).reportDay, '2026-07-19');
+    assert.equal(next.messages.at(-1).text, 'Fresh morning.');
+  });
+
+  it(`purgeReportThreadMessages drops messages older than ${REPORT_THREAD_MAX_AGE_DAYS} days`, () => {
+    const threads = {
+      [REPORT_TARGET]: {
+        messages: [
+          { id: 'a', kind: 'aiden', text: 'old', at: '2026-07-10T03:00:00.000Z', role: 'report' },
+          { id: 'b', kind: 'user', text: 'recent', at: '2026-07-17T12:00:00.000Z' },
+          { id: 'c', kind: 'aiden', text: 'today', at: '2026-07-19T03:00:00.000Z', role: 'report' }
+        ]
+      }
+    };
+    const purged = purgeReportThreadMessages(threads, { today: '2026-07-19' });
+    const msgs = purged[REPORT_TARGET].messages;
+    assert.equal(msgs.some(m => m.id === 'a'), false);
+    assert.equal(msgs.some(m => m.id === 'b'), true);
+    assert.equal(msgs.some(m => m.id === 'c'), true);
+  });
+
+  it('reportPreviewMessages: none when only report posts; one aiden reply; three when crew', () => {
+    const onlyReport = {
+      messages: [
+        { id: '1', kind: 'aiden', text: 'R1', at: 't1', role: 'report' },
+        { id: '2', kind: 'aiden', text: 'R2', at: 't2', role: 'report' }
+      ]
+    };
+    assert.deepEqual(reportPreviewMessages(onlyReport), { mode: 'none', messages: [] });
+
+    const aidenReply = {
+      messages: [
+        { id: '1', kind: 'aiden', text: 'R', at: 't1', role: 'report' },
+        { id: '2', kind: 'aiden', text: 'solo banter', at: 't2' }
+      ]
+    };
+    const a = reportPreviewMessages(aidenReply);
+    assert.equal(a.mode, 'aiden');
+    assert.equal(a.messages.length, 1);
+    assert.equal(a.messages[0].text, 'solo banter');
+
+    const crew = {
+      messages: [
+        { id: '1', kind: 'aiden', text: 'R', at: 't1', role: 'report' },
+        { id: '2', kind: 'user', name: 'Simon', text: 'oi', at: 't2' },
+        { id: '3', kind: 'aiden', text: 'yeah', at: 't3' },
+        { id: '4', kind: 'user', name: 'Dan', text: 'lol', at: 't4' },
+        { id: '5', kind: 'user', name: 'Simon', text: 'again', at: 't5' }
+      ]
+    };
+    const c = reportPreviewMessages(crew);
+    assert.equal(c.mode, 'crew');
+    assert.equal(c.messages.length, 3);
+    assert.equal(c.messages[0].text, 'yeah');
+    assert.equal(c.messages[2].text, 'again');
+  });
+
+  it('latestReportBody prefers today report then thread report messages', () => {
+    assert.equal(
+      latestReportBody({ report: { day: '2026-07-19', text: 'Today body' } }, '2026-07-19'),
+      'Today body'
+    );
+    assert.equal(
+      latestReportBody({
+        threads: {
+          [REPORT_TARGET]: {
+            messages: [
+              { id: '1', kind: 'aiden', text: 'Old report', at: 't', role: 'report' }
+            ]
+          }
+        }
+      }, '2026-07-19'),
+      'Old report'
+    );
+  });
+});
+
+describe('feedLines helpers', () => {
+  it('collectFeedLineJobs returns entries missing AI text in the window', () => {
+    const entries = [
+      { id: 'u_2026-07-19', userId: 'u', name: 'Dan', date: '2026-07-19', steps: 1000 },
+      { id: 'u_2026-07-18', userId: 'u', name: 'Dan', date: '2026-07-18', workoutParts: ['legs'] },
+      { id: 'u_2026-07-17', userId: 'u', name: 'Dan', date: '2026-07-17' } // no log
+    ];
+    const jobs = collectFeedLineJobs({
+      entries,
+      feedLines: { 'u_2026-07-18': { text: 'already', at: 't' } },
+      today: '2026-07-19'
+    });
+    assert.deepEqual(jobs.map(e => e.id), ['u_2026-07-19']);
+  });
+
+  it('purgeStaleFeedLines and feedLineWritePlan', () => {
+    const map = {
+      'u_2026-07-10': { text: 'old', at: 't' },
+      'u_2026-07-18': { text: 'ok', at: 't' }
+    };
+    const purged = purgeStaleFeedLines(map, { today: '2026-07-19' });
+    assert.equal(purged['u_2026-07-10'], undefined);
+    assert.ok(purged['u_2026-07-18']);
+
+    const plan = feedLineWritePlan(map, {
+      'u_2026-07-18': { text: 'ok', at: 't' },
+      'u_2026-07-19': { text: 'new', at: 't2' }
+    });
+    assert.deepEqual(Object.keys(plan.sets), ['u_2026-07-19']);
+    assert.deepEqual(plan.deletes, ['u_2026-07-10']);
   });
 });

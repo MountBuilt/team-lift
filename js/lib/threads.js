@@ -1,21 +1,15 @@
 // Aiden threads + the daily morning report. Pure logic only (no Firebase, no DOM).
-// Spec: docs/superpowers/specs/2026-07-26-morning-report-design.md
+// Specs: docs/superpowers/specs/2026-07-26-morning-report-design.md
+//        docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md
 //
-// 2026-07-26 rework (Claude/Opus 5). Read this before changing thread behaviour:
-//
-// * The three card parents (weight/steps/workouts) are GONE. One `report`
-//   parent replaces them, rewritten once a day on the ~3am path. Crew banter
-//   hangs off that single thread plus per-entry feed threads.
-// * Feed parent lines are now LOCAL TEMPLATES (js/lib/banter.js feedLine),
-//   written instantly by the client with no AI call and never rewritten.
-// * Because the feed parent is no longer Aiden's voice, Aiden reacting under a
-//   feed line is no longer double-talk, so proactive feed comments are back ON
-//   (they were disabled 2026-07-19 for exactly that reason). The old re-fire
-//   bug is fixed structurally: proactive fires only when a thread has NO Aiden
-//   message at all, so re-editing an entry can never re-trigger it.
-import { addDays, mondayOf, weekdayIndex } from './dates.js';
+// * One continuous `report` thread: Aiden appends a morning post each day
+//   (role: 'report'). No daily wipe of report messages; purge by age (5 days).
+// * Weekly recap still wipe-on-rewrite for `weekly` only.
+// * Feed parents: factual placeholder then AI in config/banter.feedLines.
+// * Thread replies under feed stay human-led only (parent is Aiden's voice).
+import { addDays, mondayOf, weekdayIndex, todayStr } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
-import { isBigEffort } from './banter.js';
+import { isBigEffort, hasAnyLog } from './banter.js';
 
 /** Card-style parents (not feed entry ids). Kept as an array so callers stay generic. */
 export const REPORT_TARGET = 'report';
@@ -25,8 +19,14 @@ export const CARD_TARGETS = [REPORT_TARGET, WEEKLY_TARGET];
 
 export const USER_MSG_MAX = 160;
 export const AIDEN_MSG_MAX = 240;
+/** AI feed parent line max (shorter than thread replies). */
+export const FEED_LINE_MAX = 200;
 export const FEED_THREAD_MAX_AGE_DAYS = 3;
+/** Continuous morning-report thread message retention. */
+export const REPORT_THREAD_MAX_AGE_DAYS = 5;
 export const MEMORY_KEEP = 14;
+/** Recent activity window size for feed line jobs (matches UI feed limit). */
+export const FEED_LINE_JOB_LIMIT = 12;
 /** Local HH:MM — first tick at or after this with reportDay !== today writes it. */
 export const DAILY_REPORT_AFTER = '03:00';
 
@@ -222,10 +222,8 @@ export function collectThreadJobs({ threads, entries, today }) {
 }
 
 /**
- * Digest material from the report thread before the 3am wipe.
- * Keeps the actual TEXT (truncated), not just who spoke — the old version
- * stored "workouts: Simon bantered (2 msgs)", which gave Aiden nothing to call
- * back to, so the memory feature did literally nothing.
+ * Digest material from a card thread (used for weekly wipe path; report no
+ * longer digests+wipes daily). Keeps actual TEXT (truncated).
  */
 export function digestCardThreads(threads, day, targets = CARD_TARGETS) {
   const lines = [];
@@ -240,17 +238,62 @@ export function digestCardThreads(threads, day, targets = CARD_TARGETS) {
   return { day, lines: lines.slice(0, 8) };
 }
 
+/** Wipe entire card thread keys (weekly still; report is continuous). */
 export function wipeCardThreads(threads, targets = CARD_TARGETS) {
   const next = { ...(threads || {}) };
   for (const key of targets) delete next[key];
   return next;
 }
 
+/** Local YYYY-MM-DD from an ISO `at` timestamp. */
+export function localDateFromAt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return todayStr(d);
+}
+
 /**
- * Drop feed threads older than FEED_THREAD_MAX_AGE_DAYS. No longer purges by
- * "not in the current 12-item feed window" — with 8 blokes logging daily that
- * window is ~1.5 days, so crew comments were being binned inside 2 days
- * despite the 3-day rule. Date is the only test now.
+ * Append Aiden's morning report as a message in the continuous report thread.
+ * Does not wipe existing messages.
+ */
+export function appendReportMessage(thread, { text, day, nowIso }) {
+  const body = String(text || '').trim();
+  if (!body) return thread || { messages: [], lastAidenAt: null };
+  const prev = thread || { messages: [], lastAidenAt: null };
+  const messages = [...(prev.messages || []), {
+    id: `aiden_report_${day}_${nowIso}`,
+    kind: 'aiden',
+    name: 'Aiden',
+    text: body,
+    at: nowIso,
+    role: 'report',
+    reportDay: day
+  }];
+  return { messages, lastAidenAt: nowIso };
+}
+
+/**
+ * Drop messages in threads.report older than REPORT_THREAD_MAX_AGE_DAYS.
+ * Keeps the report key; may leave an empty messages array.
+ */
+export function purgeReportThreadMessages(threads, { today }) {
+  const next = { ...(threads || {}) };
+  const t = next[REPORT_TARGET];
+  if (!t?.messages?.length) return next;
+  const oldest = addDays(today, -REPORT_THREAD_MAX_AGE_DAYS);
+  const messages = t.messages.filter(m => {
+    const day = localDateFromAt(m.at) || m.reportDay || '';
+    return !day || day >= oldest;
+  });
+  if (messages.length === t.messages.length) return next;
+  next[REPORT_TARGET] = { ...t, messages };
+  return next;
+}
+
+/**
+ * Drop feed threads older than FEED_THREAD_MAX_AGE_DAYS. Date is the only test
+ * (entry id suffix). Does not touch report/weekly.
  */
 export function purgeStaleFeedThreads(threads, { today }) {
   const next = { ...(threads || {}) };
@@ -262,6 +305,87 @@ export function purgeStaleFeedThreads(threads, { today }) {
     if (datePart && datePart < oldest) delete next[key];
   }
   return next;
+}
+
+/**
+ * Entries in the recent feed window that need an AI feed line.
+ * @returns {object[]} entry objects (with id)
+ */
+export function collectFeedLineJobs({ entries, feedLines, today, limit = FEED_LINE_JOB_LIMIT }) {
+  const map = feedLines || {};
+  const items = [...(entries || [])]
+    .filter(e => e?.id && hasAnyLog(e))
+    .sort((a, b) => (b.date === a.date
+      ? (b.updatedAt || 0) - (a.updatedAt || 0)
+      : (b.date < a.date ? -1 : 1)))
+    .slice(0, limit);
+  return items.filter(e => {
+    const text = map[e.id]?.text;
+    return !(typeof text === 'string' && text.trim());
+  });
+}
+
+/** Drop feedLines whose entry date is older than FEED_THREAD_MAX_AGE_DAYS. */
+export function purgeStaleFeedLines(feedLines, { today }) {
+  const next = { ...(feedLines || {}) };
+  const oldest = addDays(today, -FEED_THREAD_MAX_AGE_DAYS);
+  for (const key of Object.keys(next)) {
+    const datePart = key.includes('_') ? key.slice(key.lastIndexOf('_') + 1) : '';
+    if (datePart && datePart < oldest) delete next[key];
+  }
+  return next;
+}
+
+/**
+ * Per-key write plan for feedLines (same spirit as threadWritePlan).
+ * @returns {{sets: Record<string,object>, deletes: string[]}}
+ */
+export function feedLineWritePlan(prev, next) {
+  const before = prev || {};
+  const after = next || {};
+  const sets = {};
+  const deletes = [];
+  for (const key of Object.keys(after)) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) sets[key] = after[key];
+  }
+  for (const key of Object.keys(before)) {
+    if (!(key in after)) deletes.push(key);
+  }
+  return { sets, deletes };
+}
+
+/**
+ * Home activity strip for the continuous report thread.
+ * - no user messages: at most one latest non-report Aiden reply (or none)
+ * - any user message: latest 3 visible messages
+ * @returns {{ mode: 'none'|'aiden'|'crew', messages: object[] }}
+ */
+export function reportPreviewMessages(thread) {
+  const msgs = visibleMessages(thread);
+  if (msgs.length === 0) return { mode: 'none', messages: [] };
+  const hasUser = msgs.some(m => m.kind === 'user');
+  if (hasUser) {
+    return { mode: 'crew', messages: msgs.slice(-3) };
+  }
+  // Aiden-only: skip role:report posts for the strip (body already shows report)
+  const nonReport = msgs.filter(m => m.role !== 'report');
+  if (nonReport.length === 0) return { mode: 'none', messages: [] };
+  return { mode: 'aiden', messages: nonReport.slice(-1) };
+}
+
+/**
+ * Body text for the home report card.
+ * Prefer today's banter.report when fresh; else latest role:report message text.
+ */
+export function latestReportBody(banter, today) {
+  const r = banter?.report;
+  if (r?.text && r.day === today) return r.text;
+  if (r?.text && r.day) return r.text; // stale stored report still better than nothing until template
+  const msgs = visibleMessages(banter?.threads?.[REPORT_TARGET]);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'report' && msgs[i].text) return msgs[i].text;
+  }
+  return null;
 }
 
 export function trimMemory(memory, keep = MEMORY_KEEP) {

@@ -4,6 +4,7 @@ import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
 import { mountFab, openLogModal, setFabVisible } from './ui/logmodal.js';
 import { renderDashboard } from './ui/dashboard.js';
+import { renderStats } from './ui/stats.js';
 import { renderMe } from './ui/me.js';
 
 const app = document.getElementById('app');
@@ -32,9 +33,11 @@ function renderMain() {
   if (animate) window.scrollTo(0, 0);
   app.innerHTML = `
     <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/90 backdrop-blur">
-      <button data-tab="dash" class="tab flex-1 py-4 display text-sm tracking-[0.18em]
-        ${tab === 'dash' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">DASHBOARD</button>
-      <button data-tab="me" class="tab flex-1 py-4 display text-sm tracking-[0.18em]
+      <button data-tab="dash" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
+        ${tab === 'dash' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">DASH</button>
+      <button data-tab="stats" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
+        ${tab === 'stats' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">STATS</button>
+      <button data-tab="me" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'me' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">ME</button>
     </nav>
     <main id="view"></main>`;
@@ -48,6 +51,8 @@ function renderMain() {
       onEdit: (date) => openLogModal(date),
       onLogout: () => { logout(); state.tab = 'dash'; lastShownTab = null; route(); }
     }, { animate });
+  } else if (tab === 'stats') {
+    renderStats(view, state, { animate });
   } else {
     renderDashboard(view, state, {
       animate,

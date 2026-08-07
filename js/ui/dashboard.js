@@ -1,16 +1,16 @@
-import {
-  teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks, userHasLogged
-} from '../lib/aggregate.js';
+import { userHasLogged } from '../lib/aggregate.js';
 import { weeklyAwards, AWARD_LABELS } from '../lib/awards.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
-import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
+import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal, dayLabel } from '../lib/dates.js';
 import {
-  pickFrom, CHALLENGE_QUIPS, todayBoardMembers, loggedToday, logNudgeLine
+  pickFrom, CHALLENGE_QUIPS, todayBoardMembers
 } from '../lib/banter.js';
 import {
   templateReport, reportFresh, templateWeeklyReport, weeklyReportFresh
 } from '../lib/report.js';
-import { REPORT_TARGET, WEEKLY_TARGET } from '../lib/threads.js';
+import {
+  REPORT_TARGET, WEEKLY_TARGET, reportPreviewMessages, latestReportBody, visibleMessages
+} from '../lib/threads.js';
 import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
 import { pushSupported } from '../push.js';
@@ -18,7 +18,6 @@ import { renderFeed } from './feed.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { runCountUps, burstFrom, compactNumber } from './fx.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
-import { openLogModal } from './logmodal.js';
 
 // One-shot celebration: set when the user ticks the challenge, consumed by
 // the next render so the DONE stamp slams in exactly once.
@@ -31,27 +30,50 @@ const card = (inner, i, extra = '') =>
 const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
 
 /**
- * Aiden's morning report: one piece of copy about yesterday across weight, the
- * daily challenge, workouts and steps, with the crew's comment thread attached.
- *
- * This replaced the three separate per-card coach threads (weight/steps/
- * workouts) on 2026-07-26. One good daily read with a through-line beats three
- * disconnected 200-char quips, it is one comment surface instead of three, and
- * it is one model call instead of three. Do not put coach lines back on the
- * chart cards. See CLAUDE.md.
+ * Continuous morning-report thread preview.
+ * Body = latest report (fresh AI, stored report, or offline template).
+ * Activity strip: omit if only report posts; 1 non-report Aiden if Aiden-only;
+ * latest 3 once crew has spoken. Full thread opens via existing expand.
+ * Spec: 2026-08-07-home-stats-ai-feed-design.md
  */
 function reportCard(state, today) {
-  const ai = reportFresh(state.banter?.report, today) ? state.banter.report.text : null;
-  const text = ai ?? templateReport(
-    state.entries, state.users, today,
-    dailyChallenge(today, state.challenge.startDate)
-  );
+  const banter = state.banter;
+  const thread = banter?.threads?.[REPORT_TARGET];
+  let body = null;
+  if (reportFresh(banter?.report, today)) body = banter.report.text;
+  else body = latestReportBody(banter, today);
+  if (!body) {
+    body = templateReport(
+      state.entries, state.users, today,
+      dailyChallenge(today, state.challenge.startDate)
+    );
+  }
+  const dayLabelText = banter?.report?.day
+    ? dayLabel(banter.report.day, today)
+    : 'Yesterday';
+  const preview = reportPreviewMessages(thread);
+  const strip = preview.messages.length
+    ? `<div class="report-preview-strip mt-2 space-y-1.5 border-t border-edge/60 pt-2">
+        ${preview.messages.map(m => {
+          const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'mate');
+          const cls = m.kind === 'aiden' ? 'text-accent' : 'text-neutral-300';
+          return `<p class="text-xs leading-snug">
+            <span class="font-black ${cls}">${esc(who)}</span>
+            <span class="text-neutral-400"> ${esc(m.text)}</span>
+          </p>`;
+        }).join('')}
+      </div>`
+    : '';
+  const n = visibleMessages(thread).length;
+  const openHint = n > 0
+    ? `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap report to open thread · ${n} in thread</p>`
+    : `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap report to join the banter</p>`;
   return `
     <div class="flex items-center justify-between">
       <h3 class="eyebrow">Aiden's morning report</h3>
-      <span class="eyebrow text-neutral-600">Yesterday</span>
+      <span class="eyebrow text-neutral-600">${esc(dayLabelText)}</span>
     </div>
-    ${threadBlockHtml(REPORT_TARGET, esc(text), state.banter, { parentClass: 'report-parent' })}`;
+    ${threadBlockHtml(REPORT_TARGET, esc(body) + strip + openHint, banter, { parentClass: 'report-parent' })}`;
 }
 
 /** Sunday week recap (AI or template). Thread target `weekly`. */
@@ -136,21 +158,6 @@ function todayBoardHtml(state, today) {
     <div class="flex flex-wrap gap-2">${chips}</div>`;
 }
 
-// Personal CTA when the current user has nothing logged today. Banter voice,
-// not a guilt trip; disappears on the next snapshot after they save anything.
-function logNudgeHtml(state, today) {
-  const me = state.currentUser;
-  if (!me || loggedToday(state.entries, me.id, today)) return '';
-  const line = logNudgeLine(`${me.id}|${today}|nudge`);
-  return `
-    <div class="flex flex-col gap-3">
-      <p class="text-sm leading-snug text-neutral-200">${esc(line)}</p>
-      <button type="button" id="log-nudge-cta"
-        class="pressable w-full rounded-xl bg-accent py-3 display text-lg tracking-wide text-black active:bg-accentDim">
-        LOG SOMETHING</button>
-    </div>`;
-}
-
 function isIosLike() {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent)
@@ -191,33 +198,6 @@ function pushCoachHtml(state) {
         <li>Turn on notifications so Aiden can nag you morning and night</li>
       </ol>
     </div>`;
-}
-
-// Chart empty states: banter voice + open the log sheet.
-function chartEmptyHtml(kind) {
-  const copy = kind === 'weight'
-    ? 'Nobody has hit the scales yet. Be the first trend, not a ghost.'
-    : 'No steps on the board. Walk the dog, walk the block, then log it.';
-  return `
-    <p class="text-sm text-neutral-400">${esc(copy)}</p>
-    <button type="button" data-log-empty
-      class="pressable mt-3 w-full rounded-xl border border-edge py-2.5 text-sm font-black text-accent">
-      LOG IT</button>`;
-}
-
-function tilesHtml(t) {
-  const tile = (big, small, opts = {}) => `
-    <div class="flex-1 rounded-xl bg-ink border ${opts.hot ? 'border-green-400/40' : 'border-edge'} px-2 py-3 text-center">
-      <p class="display text-3xl ${opts.hot ? 'text-green-400' : ''}"
-        ${opts.count ? `data-countup="${opts.count}" data-fmt="${opts.fmt || 'plain'}"` : ''}>${big}</p>
-      <p class="mt-1 eyebrow">${small}</p>
-    </div>`;
-  const allHit = t.membersAt3 === t.totalMembers && t.totalMembers > 0;
-  return `<div class="flex gap-2">
-    ${tile(String(t.totalWorkouts), 'workouts<br>this wk', { count: t.totalWorkouts })}
-    ${tile(`${t.membersAt3}/${t.totalMembers}`, 'hit 3+<br>this wk', { count: 0, hot: allHit })}
-    ${tile(compactNumber(t.totalSteps), 'team steps<br>this wk', { count: t.totalSteps, fmt: 'compact' })}
-  </div>`;
 }
 
 // Client-only podium for this Mon–Sun. Never shows absolute kg.
@@ -292,122 +272,6 @@ function challengeCard(state, today) {
     ${doneChips ? `<p class="mt-2 text-xs text-neutral-500">Done today: ${doneChips}</p>` : ''}`;
 }
 
-function dotsRow(days, count) {
-  const hit = count >= 3;
-  const dot = (day, j) => {
-    if (day.parts.length === 0) {
-      return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full bg-edge" style="--fx-j:${j}"></span>`;
-    }
-    const label = esc(day.parts.join(' + '));
-    return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full cursor-pointer
-      ${hit ? 'bg-green-400' : 'bg-accent'}" style="--fx-j:${j}" data-parts="${label}" aria-label="${label}"></span>`;
-  };
-  return `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
-}
-
-function workoutsPanel(state, monday) {
-  const lastMonday = addDays(monday, -7);
-  const rows = state.users.map(u => {
-    const days = workoutWeek(state.entries, u.id, monday);
-    const count = weeklyWorkoutCount(state.entries, u.id, monday);
-    const lastCount = weeklyWorkoutCount(state.entries, u.id, lastMonday);
-    const streak = streakWeeks(state.entries, u.id, monday);
-    return `
-      <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
-        <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
-          ${streak >= 2 ? '<span class="flame" title="' + streak + '-week streak">🔥</span>' : ''}</span>
-        ${dotsRow(days, count)}
-        <span class="w-16 text-right text-sm ${count >= 3 ? 'font-black text-green-400' : 'text-neutral-400'}">
-          ${count}/7 <span class="text-neutral-600 text-xs">(${lastCount})</span></span>
-      </div>`;
-  }).join('');
-  const allHit = state.users.length > 0 &&
-    state.users.every(u => weeklyWorkoutCount(state.entries, u.id, monday) >= 3);
-  return `
-    ${allHit ? `<p class="team-hit mb-2 rounded-xl border border-green-400/30
-      px-3 py-2 text-center display text-base tracking-wide text-green-400">
-      💪 WHOLE TEAM AT 3+ THIS WEEK</p>` : ''}
-    <div class="mb-1 flex items-center justify-between">
-      <h3 class="eyebrow">Workouts this week</h3>
-      <span class="text-xs text-neutral-500">last wk in ( )</span>
-    </div>
-    ${rows || '<p class="text-neutral-500 text-sm">No members yet.</p>'}
-    <div id="workout-tooltip" role="tooltip"
-      class="hidden fixed z-50 pointer-events-none max-w-[16rem] rounded-lg border border-edge
-        bg-ink px-2 py-1 text-xs text-neutral-100 shadow-lg"></div>`;
-}
-
-// Single delegated pointer/tap tooltip for the workout dots. Capture-phase
-// listeners let one handler on the card catch pointerenter/pointerleave,
-// which don't bubble, for every dot inside it.
-function initWorkoutTooltip(cardEl) {
-  const tip = cardEl.querySelector('#workout-tooltip');
-  if (!tip) return;
-
-  const hide = () => {
-    tip.classList.add('hidden');
-    if (activeWorkoutTip === tip) activeWorkoutTip = null;
-  };
-
-  const show = (dot) => {
-    const parts = dot.dataset.parts;
-    if (!parts) return;
-    tip.textContent = parts;
-    tip.classList.remove('hidden');
-    activeWorkoutTip = tip;
-    const dotRect = dot.getBoundingClientRect();
-    const tipRect = tip.getBoundingClientRect();
-    let left = dotRect.left + dotRect.width / 2 - tipRect.width / 2;
-    left = Math.max(4, Math.min(left, window.innerWidth - tipRect.width - 4));
-    let top = dotRect.top - tipRect.height - 8;
-    if (top < 4) top = dotRect.bottom + 8;
-    tip.style.left = `${left}px`;
-    tip.style.top = `${top}px`;
-  };
-
-  // cardEl is torn down and replaced on every re-render (app.js re-renders the
-  // whole view on each Firestore snapshot), so listeners on it are naturally
-  // garbage-collected with it. document/window listeners are not, so those
-  // are bound exactly once at module scope (below) and call the module-level
-  // hideActiveWorkoutTooltip, which always targets whichever tooltip is open.
-  cardEl.addEventListener('pointerenter', (ev) => {
-    if (ev.pointerType !== 'mouse') return;
-    const dot = ev.target.closest?.('[data-parts]');
-    if (dot) show(dot);
-  }, true);
-
-  cardEl.addEventListener('pointerleave', (ev) => {
-    if (ev.pointerType !== 'mouse') return;
-    if (ev.target.closest?.('[data-parts]')) hide();
-  }, true);
-
-  cardEl.addEventListener('click', (ev) => {
-    const dot = ev.target.closest?.('[data-parts]');
-    if (!dot) return;
-    ev.stopPropagation();
-    show(dot);
-  });
-
-  bindGlobalWorkoutTooltipDismissal();
-}
-
-let activeWorkoutTip = null;
-let globalWorkoutTooltipDismissalBound = false;
-
-function hideActiveWorkoutTooltip() {
-  if (activeWorkoutTip) {
-    activeWorkoutTip.classList.add('hidden');
-    activeWorkoutTip = null;
-  }
-}
-
-function bindGlobalWorkoutTooltipDismissal() {
-  if (globalWorkoutTooltipDismissalBound) return;
-  globalWorkoutTooltipDismissalBound = true;
-  document.addEventListener('click', hideActiveWorkoutTooltip);
-  window.addEventListener('scroll', hideActiveWorkoutTooltip, true);
-}
-
 export function renderDashboard(container, state, {
   animate = false,
   onGoMe = null
@@ -415,17 +279,15 @@ export function renderDashboard(container, state, {
   const c = state.challenge;
   const today = todayStr();
   const monday = mondayOf(today);
-  const nudge = logNudgeHtml(state, today);
   const coach = pushCoachHtml(state);
   let fx = 0;
   const nextFx = () => fx++;
 
-  // Phase 3 order: log/status first, charts last. One report card only.
+  // Status + Aiden + feed. Scoreboard charts/tiles live on the Stats tab.
   container.innerHTML = `
     <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pt-5 safe-bottom">
       ${headerHtml(c, today)}
       ${card(todayBoardHtml(state, today), nextFx())}
-      ${nudge ? card(nudge, nextFx(), 'log-nudge-card border-accent/30') : ''}
       ${coach ? card(coach, nextFx(), 'push-coach-card border-edge') : ''}
       ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
       ${card(reportCard(state, today), nextFx(), 'report-card')}
@@ -433,28 +295,13 @@ export function renderDashboard(container, state, {
         const w = weeklyCard(state, today);
         return w ? card(w, nextFx(), 'weekly-card') : '';
       })()}
-      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
       ${card(awardsHtml(state, monday), nextFx(), 'awards-card')}
-      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
-        ${workoutsPanel(state, monday)}
-      </section>
       ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, nextFx())}
-      ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
-        <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <div id="weight-empty" class="hidden mt-2">${chartEmptyHtml('weight')}</div>`, nextFx())}
-      ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
-        <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <div id="steps-empty" class="hidden mt-2">${chartEmptyHtml('steps')}</div>`, nextFx())}
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
   bindThreads(container, state.banter);
-  initWorkoutTooltip(container.querySelector('#workouts-card'));
   if (animate) runCountUps(container);
-
-  container.querySelector('#log-nudge-cta')?.addEventListener('click', () => openLogModal());
-  container.querySelectorAll('[data-log-empty]').forEach(btn =>
-    btn.addEventListener('click', () => openLogModal()));
 
   container.querySelector('#push-coach-dismiss')?.addEventListener('click', () => {
     try { localStorage.setItem(PUSH_COACH_KEY, '1'); } catch { /* ignore */ }
@@ -482,5 +329,4 @@ export function renderDashboard(container, state, {
       btn.textContent = "I'VE DONE IT ✔";
     }
   });
-  import('../charts.js').then(m => m.drawCharts(state, { animate })).catch(() => {});
 }

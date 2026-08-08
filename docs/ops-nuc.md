@@ -181,25 +181,34 @@ systemctl --user disable --now teamlift-banter-watch.service
 
 ## 4. Deploy workflow (Mac develops, NUC runs)
 
+**Agents: every push to `main` must be followed by a NUC pull in the same
+turn.** Do not report deploy complete until the NUC HEAD matches `origin/main`.
+Host alias: `teamlift-nuc` (`~/.ssh/config`).
+
 1. Develop and commit on the Mac; push to `main` (Pages + app code).
-2. On the NUC:
+2. **Immediately** pull on the NUC (mandatory after every push):
 
    ```bash
-   cd ~/team-lift && git pull
-   # only when package-lock.json changed:
-   cd scripts && npm ci
-   systemctl --user restart teamlift-banter-watch.service
+   ssh teamlift-nuc 'cd ~/team-lift && git pull --ff-only && git rev-parse --short HEAD'
+   ```
+
+   Optional extras only when needed:
+
+   ```bash
+   # only when scripts/package-lock.json changed:
+   ssh teamlift-nuc 'cd ~/team-lift/scripts && npm ci'
+   # when orchestrator / watcher / prompt changed:
+   ssh teamlift-nuc 'systemctl --user restart teamlift-banter-watch.service'
    ```
 
 3. Reinstall units when `scripts/teamlift-banter*.service` or `.timer` changed:
 
    ```bash
-   cp ~/team-lift/scripts/teamlift-banter*.service \
+   ssh teamlift-nuc 'cp ~/team-lift/scripts/teamlift-banter*.service \
       ~/team-lift/scripts/teamlift-banter.timer \
-      ~/.config/systemd/user/
-   systemctl --user daemon-reload
-   systemctl --user restart teamlift-banter-watch.service
-   systemctl --user restart teamlift-banter.timer
+      ~/.config/systemd/user/ && \
+      systemctl --user daemon-reload && \
+      systemctl --user restart teamlift-banter-watch.service teamlift-banter.timer'
    ```
 
 4. Hand test:

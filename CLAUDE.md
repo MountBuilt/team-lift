@@ -17,6 +17,14 @@ shape, `scripts/prompt/aiden.md`).
 **Production tick host:** Intel NUC (Linux Mint, systemd user timer). Mac is
 for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 
+**Deploy rule (agents — always):** After any `git push` to `main`, immediately
+`ssh teamlift-nuc 'cd ~/team-lift && git pull --ff-only'` and confirm HEAD
+matches. UI ships via GitHub Pages; Aiden/tick code only runs what the NUC has
+checked out. Do not leave the NUC behind the remote. If `scripts/package-lock.json`
+changed, `npm ci` in `scripts/` on the NUC. If unit files changed, reinstall
+systemd units per `docs/ops-nuc.md`. Restart `teamlift-banter-watch.service`
+when orchestrator/watcher code changed.
+
 ## Specs (read these)
 - v1 app: `docs/superpowers/specs/2026-07-08-team-lift-design.md`
 - Push + orchestrator: `docs/superpowers/specs/2026-07-13-push-notifications-design.md`
@@ -33,7 +41,8 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 ## Commands
 - Unit tests: `node --test` (auto-discovers `tests/*.test.js`; Node 26 rejects a bare `tests/` directory argument)
 - Run locally: `python3 -m http.server 8000` then open http://localhost:8000
-- Deploy: push to `main` (GitHub Pages serves repo root)
+- Deploy: push to `main` (GitHub Pages serves repo root), **then always pull
+  on the NUC** — `ssh teamlift-nuc 'cd ~/team-lift && git pull --ff-only'`
 - Firestore rules deploy: `firebase deploy --only firestore:rules`
 - Tick (report + replies + pushes): **production** is the NUC systemd timer
   (`teamlift-banter.timer`, every 60s). Hand/dry-run from any machine:

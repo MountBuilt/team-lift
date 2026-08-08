@@ -44,7 +44,7 @@ Four product problems:
 | Stats tab | **Tiles + workouts panel + weight chart + team steps chart.** Podium awards stay on Dashboard. |
 | Ship style | **One pass** (UI + continuous report + AI feed in one implementation). |
 | Report thread | **Flat continuous chat.** Aiden appends a morning post each day. No daily wipe. |
-| Home preview | Latest **report body** always. Activity strip: omit if nothing but that report; **1** latest non-report Aiden reply if Aiden-only; **latest 3** messages once any user has spoken. |
+| Home preview | **Coach chat** card: always the **latest 3** visible messages (report posts included). No separate static report body. Empty thread uses report pointer / template as synthetic preview only. Open thread at bottom; load-earlier windowing. |
 | Report message TTL | **5 calendar days** (by message `at` date, local). Hard delete on tick. |
 | Weekly recap | **Leave separate** (current Sunday card + wipe-on-rewrite). |
 | Feed parents | **AI for every log.** Factual placeholder immediately; AI line replaces it once and sticks. |
@@ -138,23 +138,22 @@ in history. That is fine.
 - `CARD_TARGETS` still skips feed-style date-from-key purge for `report` /
   `weekly`; report uses the message-level 5-day purge instead.
 
-### Home UI (Dashboard card)
+### Home UI (Dashboard card) — Coach chat
 
 Not the full expanded thread by default.
 
-1. Eyebrow: "Aiden's morning report" + day label for the latest report-role
-   message (or `report.day`).
-2. **Body:** latest report text — prefer fresh `banter.report` for today;
-   else latest `role: 'report'` message in the thread; else
-   `templateReport()` offline fallback.
-3. **Activity strip** (messages in the retained window, soft-deleted hidden):
-   - If **no user messages** → show **at most one** latest non-report Aiden
-     reply if any; do **not** stack three Aiden monologues. If the only
-     content is the report body already shown, omit the strip.
-   - If **any user message** exists → show the **latest 3** visible messages
-     (mixed user + Aiden), same chrome as thread previews elsewhere.
-4. CTA: open / expand full thread (existing composer, typing dots, delete
-   rules). Full history = retained 5-day window.
+1. Eyebrow: **Coach chat** + msg count (or "live" when empty).
+2. **Preview:** always the **latest 3** visible messages in `threads.report`
+   (report-role posts included — the morning report is one bubble among peers).
+   Long lines clipped for the card (`COACH_PREVIEW_TEXT_MAX`); full text in
+   the expanded panel.
+3. **Empty thread fallback:** prefer fresh `banter.report` for today; else
+   latest `role: 'report'` in thread; else `templateReport()` offline. Shown
+   as a synthetic preview line only — **not** written to the thread.
+4. CTA: tap preview to expand. Opens scrolled to **bottom** (newest). Message
+   list is height-capped; **Load earlier** grows a from-the-end window
+   (`THREAD_WINDOW_INITIAL` / `THREAD_WINDOW_CHUNK`). Composer, typing dots,
+   delete rules unchanged. Full retained history = 5-day purge window.
 
 Template offline body must **not** be appended as a fake Aiden message.
 Only the real model report becomes a `role: 'report'` message.

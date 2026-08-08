@@ -16,6 +16,19 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* Notch / status-bar safe area for the sticky top tabs.
+   black-translucent + viewport-fit=cover draw under the system chrome;
+   without this the tab hit targets sit under the notch on installed iOS PWAs
+   and are untappable. Background still bleeds into the inset; buttons sit below. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 44px min touch target on main tabs (Apple HIG). */
+nav.safe-top > .tab {
+  min-height: 44px;
+}
+
 /* ---- Display face: Anton (self-hosted, OFL). Poster type for titles and
    big numbers only; body copy stays on the system stack. ---- */
 @font-face {
@@ -75,8 +88,7 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   color: #a3a3a3;
 }
 
-/* Aiden's morning report: the hero copy, so it reads as prose rather than as a
-   card footnote. Roman, larger, brighter than .coach. */
+/* Coach chat (continuous report thread): card chrome, preview is last N msgs. */
 .report-card {
   border-color: rgba(249, 115, 22, 0.28);
   background:
@@ -91,6 +103,20 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   font-style: normal;
   line-height: 1.55;
   color: #e5e5e5;
+}
+.coach-preview .coach-preview-line { margin: 0; }
+.coach-report-tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(249, 115, 22, 0.35);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember);
+  vertical-align: middle;
 }
 
 /* ---- Aiden threads (crew banter-back under parents) ---- */
@@ -126,6 +152,31 @@ input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   padding: 0.5rem 0 0.25rem 0.75rem;
   border-left: 2px solid #2a2a2a;
 }
+/* Windowed chat history: cap height so 5 days of coach chat does not
+   stretch the dashboard. Opens scrolled to bottom; load-earlier prepends. */
+.thread-list {
+  max-height: min(50vh, 22rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.25rem;
+}
+.thread-earlier {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #2a2a2a;
+  border-radius: 0.5rem;
+  background: #0f0f0f;
+  color: #a3a3a3;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.thread-earlier:hover { color: var(--ember); border-color: rgba(249, 115, 22, 0.4); }
 .thread-msg {
   display: flex;
   align-items: flex-start;

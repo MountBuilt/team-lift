@@ -153,19 +153,42 @@ export function buildContext({
     };
   };
 
+  const todayChallenge = dailyChallenge(today, challengeStart);
+  const yDay = addDays(today, -1);
+  const yChallenge = dailyChallenge(yDay, challengeStart);
+  const ySummary = wantReport ? yesterdaySummary(entries, users, today) : null;
+  // Who actually faced yesterday's challenge (logged that day). Silent blokes
+  // did not "avoid" the exercise; they simply did not log.
+  const yLogged = ySummary ? ySummary.members.filter(m => m.logged) : [];
+  const challengeYesterday = wantReport ? {
+    ...yChallenge,
+    date: yDay,
+    ticked: yLogged.filter(m => m.dailyChallenge).map(m => m.name),
+    skippedAmongLogged: yLogged.filter(m => !m.dailyChallenge).map(m => m.name)
+  } : null;
+
   return {
     today,
     botName: 'Aiden',
     jobs,
     mood: moodFor(seed),
-    challenge: dailyChallenge(today, challengeStart),
+    // TODAY's invitation only. Nobody has completed or failed it yet at report
+    // time (same-day grace). Do not name anyone as avoiding this exercise.
+    challenge: {
+      ...todayChallenge,
+      note: 'Invitation for everyone today. Nobody has done or skipped it yet. Never say a bloke avoided, skipped, or failed this challenge.'
+    },
+    // Completed-day challenge results. Roast skips only from skippedAmongLogged.
+    challengeYesterday,
     // The morning report may ONLY talk about this. It is a completed day, so
     // roasting inactivity here is fair game (same-day grace does not apply).
-    yesterday: wantReport ? yesterdaySummary(entries, users, today) : null,
+    yesterday: ySummary,
     thisWeek: thisWeekStandings(entries, users, today),
     grace: {
       sameDay: 'Today is never a missed, lazy, skipped or rest day. The boys have until midnight to log. Only judge inactivity on completed days. The evening push is pure encouragement, never a roast for not logging today.',
-      restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.'
+      restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.',
+      challengeToday: 'context.challenge is TODAY only: name the exercise and reps as a pull for everyone. Never claim anyone avoided, skipped, dodged or failed it. A bloke who has not logged today is not avoiding the challenge; the day is not over.',
+      challengeYesterday: 'Only challengeYesterday.skippedAmongLogged may be roasted for skipping the challenge, and only for YESTERDAY\'s exercise/reps. Silent blokes (yesterday.silent) missed the whole day, not specifically the challenge. Do not mix today\'s exercise name with yesterday\'s skips.'
     },
     users: users.map(u => ({ id: u.id, name: u.name })),
     storylines: activeStorylines(STORYLINES, today)

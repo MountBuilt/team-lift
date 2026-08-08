@@ -8,7 +8,9 @@ import {
   threadWritePlan, deleteUserMessage, appendUserMessage,
   appendReportMessage, purgeReportThreadMessages, collectFeedLineJobs,
   purgeStaleFeedLines, feedLineWritePlan, reportPreviewMessages, latestReportBody,
-  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, REPORT_THREAD_MAX_AGE_DAYS
+  clipCoachPreviewText, threadMessageWindow,
+  CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, REPORT_THREAD_MAX_AGE_DAYS,
+  COACH_PREVIEW_LIMIT, THREAD_WINDOW_INITIAL
 } from '../js/lib/threads.js';
 
 describe('needsDailyReport', () => {
@@ -465,14 +467,18 @@ describe('continuous report thread', () => {
     assert.equal(msgs.some(m => m.id === 'c'), true);
   });
 
-  it('reportPreviewMessages: none when only report posts; one aiden reply; three when crew', () => {
+  it('reportPreviewMessages: always last N including report posts (Coach chat)', () => {
     const onlyReport = {
       messages: [
         { id: '1', kind: 'aiden', text: 'R1', at: 't1', role: 'report' },
         { id: '2', kind: 'aiden', text: 'R2', at: 't2', role: 'report' }
       ]
     };
-    assert.deepEqual(reportPreviewMessages(onlyReport), { mode: 'none', messages: [] });
+    const o = reportPreviewMessages(onlyReport);
+    assert.equal(o.mode, 'aiden');
+    assert.equal(o.messages.length, 2);
+    assert.equal(o.messages[0].text, 'R1');
+    assert.equal(o.messages[1].text, 'R2');
 
     const aidenReply = {
       messages: [
@@ -482,8 +488,8 @@ describe('continuous report thread', () => {
     };
     const a = reportPreviewMessages(aidenReply);
     assert.equal(a.mode, 'aiden');
-    assert.equal(a.messages.length, 1);
-    assert.equal(a.messages[0].text, 'solo banter');
+    assert.equal(a.messages.length, 2);
+    assert.equal(a.messages[1].text, 'solo banter');
 
     const crew = {
       messages: [
@@ -496,9 +502,36 @@ describe('continuous report thread', () => {
     };
     const c = reportPreviewMessages(crew);
     assert.equal(c.mode, 'crew');
-    assert.equal(c.messages.length, 3);
+    assert.equal(c.messages.length, COACH_PREVIEW_LIMIT);
     assert.equal(c.messages[0].text, 'yeah');
     assert.equal(c.messages[2].text, 'again');
+
+    assert.deepEqual(reportPreviewMessages({ messages: [] }), { mode: 'none', messages: [] });
+  });
+
+  it('clipCoachPreviewText truncates long report posts for the home card', () => {
+    assert.equal(clipCoachPreviewText('short'), 'short');
+    const long = 'x'.repeat(200);
+    const clipped = clipCoachPreviewText(long, 180);
+    assert.ok(clipped.endsWith('…'));
+    assert.equal(clipped.length, 180);
+  });
+
+  it('threadMessageWindow slices from the end for load-earlier', () => {
+    const msgs = Array.from({ length: 50 }, (_, i) => ({ id: String(i), text: `m${i}` }));
+    const first = threadMessageWindow(msgs, THREAD_WINDOW_INITIAL);
+    assert.equal(first.total, 50);
+    assert.equal(first.shown, THREAD_WINDOW_INITIAL);
+    assert.equal(first.hasMore, true);
+    assert.equal(first.messages[0].id, String(50 - THREAD_WINDOW_INITIAL));
+    assert.equal(first.messages.at(-1).id, '49');
+
+    const more = threadMessageWindow(msgs, THREAD_WINDOW_INITIAL + 20);
+    assert.equal(more.shown, 50, 'cannot show more than total');
+    assert.equal(more.hasMore, false);
+
+    const empty = threadMessageWindow([], 40);
+    assert.deepEqual(empty, { messages: [], hasMore: false, shown: 0, total: 0 });
   });
 
   it('latestReportBody prefers today report then thread report messages', () => {

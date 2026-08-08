@@ -8,13 +8,18 @@ import { writeBanterThread } from '../firebase.js';
 import { state } from '../state.js';
 import {
   commentCount, visibleMessages, appendUserMessage, deleteUserMessage,
-  aidenThinkingState, USER_MSG_MAX
+  aidenThinkingState, USER_MSG_MAX, threadMessageWindow,
+  THREAD_WINDOW_INITIAL, THREAD_WINDOW_CHUNK
 } from '../lib/threads.js';
 import { esc } from '../lib/esc.js';
 
 // Survive full dashboard re-renders (every Firestore snapshot) so an open
 // compose does not collapse when someone else logs a step.
 const expandedTargets = new Set();
+// How many messages from the end each open thread is showing (load-earlier).
+const threadWindowSize = new Map();
+// 'bottom' | { type: 'preserve', prevHeight, prevTop } — applied after panel paint.
+const scrollIntent = new Map();
 
 // A Firestore snapshot rebuilds the whole feed, which throws away the compose
 // box mid-sentence and drops the keyboard on mobile: you tapped, the keyboard
@@ -93,10 +98,12 @@ function allThreads(banter) {
  * Once a chat has started, show "N comments".
  * @param {string} [opts.parentClass='coach'] - `coach` (card italics) or
  *   `feed-parent` (recent activity: roman, name+line inline).
+ * @param {boolean} [opts.hideCount] - skip the "N comments" button (Coach chat
+ *   shows count in the card header instead).
  */
-export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach' } = {}) {
+export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach', hideCount = false } = {}) {
   const n = commentCount(threadOf(banter, target));
-  const count = n > 0
+  const count = (!hideCount && n > 0)
     ? `<button type="button" class="thread-count" data-thread-target="${esc(target)}"
          aria-expanded="false">${n} comment${n === 1 ? '' : 's'}</button>`
     : '';
@@ -141,10 +148,24 @@ function typingHtml(target, thread) {
 
 function panelHtml(target, banter, meId) {
   const thread = threadOf(banter, target);
-  const msgs = visibleMessages(thread);
+  const all = visibleMessages(thread);
+  if (!threadWindowSize.has(target)) {
+    threadWindowSize.set(target, THREAD_WINDOW_INITIAL);
+  }
+  // Grow window if the live thread shrank under the cursor (purge) so we do
+  // not request more than exists.
+  const wanted = threadWindowSize.get(target);
+  const win = threadMessageWindow(all, wanted);
+  threadWindowSize.set(target, win.shown || THREAD_WINDOW_INITIAL);
+  const earlier = win.hasMore
+    ? `<button type="button" class="thread-earlier" data-thread-earlier="${esc(target)}">
+        Load earlier · ${win.total - win.shown} more
+      </button>`
+    : '';
   return `
-    <div class="thread-list">
-      ${msgs.map(m => messageRowHtml(m, meId).replace(
+    <div class="thread-list" data-thread-list="${esc(target)}">
+      ${earlier}
+      ${win.messages.map(m => messageRowHtml(m, meId).replace(
         'data-thread-target=""',
         `data-thread-target="${esc(target)}"`
       )).join('') || ''}
@@ -158,15 +179,52 @@ function panelHtml(target, banter, meId) {
     </div>`;
 }
 
+function applyThreadScroll(panel, target) {
+  const list = panel.querySelector(`[data-thread-list="${CSS.escape(target)}"]`)
+    || panel.querySelector('.thread-list');
+  if (!list) return;
+  const intent = scrollIntent.get(target);
+  if (intent && intent.type === 'preserve') {
+    list.scrollTop = list.scrollHeight - intent.prevHeight + intent.prevTop;
+    scrollIntent.set(target, null);
+    return;
+  }
+  // Default: newest at the bottom (open, send, live reply).
+  list.scrollTop = list.scrollHeight;
+  if (intent === 'bottom') scrollIntent.set(target, null);
+}
+
 function expand(root, target, banter, meId, { focus = true } = {}) {
   const panel = root.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
   if (!panel) return;
   expandedTargets.add(target);
+  if (!threadWindowSize.has(target)) {
+    threadWindowSize.set(target, THREAD_WINDOW_INITIAL);
+  }
+  // Scroll policy:
+  // - load-earlier already stashed a preserve intent → keep it
+  // - first open (or focus) → bottom (newest)
+  // - snapshot re-paint of an open panel → stay near bottom if he was there,
+  //   else preserve position so "load earlier" reading does not jump
+  const pending = scrollIntent.get(target);
+  if (!(pending && pending.type === 'preserve')) {
+    const list = panel.querySelector('.thread-list');
+    const wasOpen = list && !panel.classList.contains('hidden');
+    if (!wasOpen || focus) {
+      scrollIntent.set(target, 'bottom');
+    } else {
+      const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 56;
+      scrollIntent.set(target, nearBottom
+        ? 'bottom'
+        : { type: 'preserve', prevHeight: list.scrollHeight, prevTop: list.scrollTop });
+    }
+  }
   panel.classList.remove('hidden');
   panel.innerHTML = panelHtml(target, banter, meId);
   const countBtn = root.querySelector(`.thread-count[data-thread-target="${CSS.escape(target)}"]`);
   countBtn?.setAttribute('aria-expanded', 'true');
   bindPanel(panel, target);
+  applyThreadScroll(panel, target);
 
   if (focus) {
     const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
@@ -178,6 +236,8 @@ function collapse(root, target) {
   const panel = root.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
   if (!panel) return;
   expandedTargets.delete(target);
+  threadWindowSize.delete(target);
+  scrollIntent.delete(target);
   panel.classList.add('hidden');
   panel.innerHTML = '';
   root.querySelector(`.thread-count[data-thread-target="${CSS.escape(target)}"]`)
@@ -243,11 +303,28 @@ function scheduleTypingClear(panel, target) {
 function renderPanel(panel, target) {
   panel.innerHTML = panelHtml(target, state.banter, state.currentUser?.id);
   bindPanel(panel, target);
+  applyThreadScroll(panel, target);
 }
 
 function bindPanel(panel, target) {
   const send = panel.querySelector(`[data-thread-send="${CSS.escape(target)}"]`);
   const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
+  const earlier = panel.querySelector(`[data-thread-earlier="${CSS.escape(target)}"]`);
+  earlier?.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const list = panel.querySelector('.thread-list');
+    if (list) {
+      scrollIntent.set(target, {
+        type: 'preserve',
+        prevHeight: list.scrollHeight,
+        prevTop: list.scrollTop
+      });
+    }
+    const cur = threadWindowSize.get(target) || THREAD_WINDOW_INITIAL;
+    threadWindowSize.set(target, cur + THREAD_WINDOW_CHUNK);
+    renderPanel(panel, target);
+  });
   send?.addEventListener('click', async () => {
     const text = input?.value || '';
     if (!text.trim()) return;
@@ -262,6 +339,12 @@ function bindPanel(panel, target) {
       send.disabled = false;
       return;
     }
+    // New message always lands at the end — pin scroll to bottom.
+    scrollIntent.set(target, 'bottom');
+    // Grow window so a partially loaded history still includes the new line.
+    const all = visibleMessages(thread);
+    const cur = threadWindowSize.get(target) || THREAD_WINDOW_INITIAL;
+    if (all.length > cur) threadWindowSize.set(target, all.length);
     // Paint the staged message + typing dots immediately (before the write).
     const liveNow = panel.isConnected
       ? panel

@@ -32,12 +32,15 @@ function renderMain() {
   const scrollY = animate ? 0 : window.scrollY;
   if (animate) window.scrollTo(0, 0);
   app.innerHTML = `
-    <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/90 backdrop-blur">
-      <button data-tab="dash" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
+    <nav class="sticky top-0 z-30 flex border-b border-edge bg-ink/90 backdrop-blur safe-top" role="tablist" aria-label="Main">
+      <button type="button" data-tab="dash" role="tab" aria-selected="${tab === 'dash'}"
+        class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'dash' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">DASH</button>
-      <button data-tab="stats" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
+      <button type="button" data-tab="stats" role="tab" aria-selected="${tab === 'stats'}"
+        class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'stats' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">STATS</button>
-      <button data-tab="me" class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
+      <button type="button" data-tab="me" role="tab" aria-selected="${tab === 'me'}"
+        class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'me' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">ME</button>
     </nav>
     <main id="view"></main>`;

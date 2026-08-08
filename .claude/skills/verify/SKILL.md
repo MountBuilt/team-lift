@@ -30,3 +30,31 @@ chromium_headless_shell-*/chrome-headless-shell-mac-arm64/chrome-headless-shell`
 - Wait for `#weight-chart, #weight-empty`, then ~1.5s for snapshots to settle.
 - Flows worth screenshotting: dashboard (charts, tiles, dots, feed), ME tab,
   `#fab` → log modal (chips, prefill), chart hover for tooltip privacy.
+
+## Mobile / PWA chrome (do not skip after nav or header changes)
+
+Installed iOS PWA uses `viewport-fit=cover` + `black-translucent`, so content
+draws under the status bar / home indicator. Desktop Chrome will not catch this.
+
+1. Emulate a phone viewport (e.g. iPhone 14, 390×844) **and** inject safe areas
+   before paint:
+   ```js
+   await page.addInitScript(() => {
+     const s = document.createElement('style');
+     s.textContent = `:root {
+       --sat: 47px; --sab: 34px;
+     }
+     .safe-top { padding-top: var(--sat) !important; }
+     .safe-bottom { padding-bottom: calc(7rem + var(--sab)) !important; }`;
+     document.documentElement.appendChild(s);
+   });
+   ```
+   (Headless Chromium often leaves `env(safe-area-inset-*)` at 0; force them.)
+2. Assert the sticky tab bar is tappable:
+   - `nav.safe-top` exists; each `.tab` has `getBoundingClientRect().top >= 40`
+     (below a ~47px status inset) and `height >= 44`.
+   - Click STATS and ME; confirm `#view` content swaps (Stats charts / Me header).
+3. Assert FAB / bottom content is not under the home indicator:
+   - `#fab` bottom edge is above `viewportHeight - safeBottom`.
+4. Screenshot dash + stats + me at phone size after every sticky-nav or safe-area
+   change.

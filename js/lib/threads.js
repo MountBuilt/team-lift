@@ -24,6 +24,14 @@ export const FEED_LINE_MAX = 200;
 export const FEED_THREAD_MAX_AGE_DAYS = 3;
 /** Continuous morning-report thread message retention. */
 export const REPORT_THREAD_MAX_AGE_DAYS = 5;
+/** Home Coach chat card: always the latest N visible messages. */
+export const COACH_PREVIEW_LIMIT = 3;
+/** Expanded thread: first paint shows this many from the end (newest). */
+export const THREAD_WINDOW_INITIAL = 40;
+/** "Load earlier" grows the window by this many. */
+export const THREAD_WINDOW_CHUNK = 20;
+/** Clip long report posts on the home preview (full text in expanded thread). */
+export const COACH_PREVIEW_TEXT_MAX = 180;
 export const MEMORY_KEEP = 14;
 /** Recent activity window size for feed line jobs (matches UI feed limit). */
 export const FEED_LINE_JOB_LIMIT = 12;
@@ -355,22 +363,43 @@ export function feedLineWritePlan(prev, next) {
 }
 
 /**
- * Home activity strip for the continuous report thread.
- * - no user messages: at most one latest non-report Aiden reply (or none)
- * - any user message: latest 3 visible messages
+ * Home Coach chat preview: always the latest N visible messages (report posts
+ * included — the morning report is just one bubble in the chat, not a hero body).
  * @returns {{ mode: 'none'|'aiden'|'crew', messages: object[] }}
  */
-export function reportPreviewMessages(thread) {
+export function reportPreviewMessages(thread, limit = COACH_PREVIEW_LIMIT) {
   const msgs = visibleMessages(thread);
   if (msgs.length === 0) return { mode: 'none', messages: [] };
+  const n = Math.max(1, Math.min(Number(limit) || COACH_PREVIEW_LIMIT, 20));
   const hasUser = msgs.some(m => m.kind === 'user');
-  if (hasUser) {
-    return { mode: 'crew', messages: msgs.slice(-3) };
-  }
-  // Aiden-only: skip role:report posts for the strip (body already shows report)
-  const nonReport = msgs.filter(m => m.role !== 'report');
-  if (nonReport.length === 0) return { mode: 'none', messages: [] };
-  return { mode: 'aiden', messages: nonReport.slice(-1) };
+  return {
+    mode: hasUser ? 'crew' : 'aiden',
+    messages: msgs.slice(-n)
+  };
+}
+
+/** Truncate long lines for the home Coach chat card. */
+export function clipCoachPreviewText(text, max = COACH_PREVIEW_TEXT_MAX) {
+  const s = String(text || '').trim();
+  if (s.length <= max) return s;
+  return `${s.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+/**
+ * Expanded-thread window: newest `shownFromEnd` messages, for load-earlier.
+ * @returns {{ messages: object[], hasMore: boolean, shown: number, total: number }}
+ */
+export function threadMessageWindow(messages, shownFromEnd = THREAD_WINDOW_INITIAL) {
+  const all = Array.isArray(messages) ? messages : [];
+  if (all.length === 0) return { messages: [], hasMore: false, shown: 0, total: 0 };
+  const shown = Math.max(1, Math.min(Number(shownFromEnd) || THREAD_WINDOW_INITIAL, all.length));
+  const start = all.length - shown;
+  return {
+    messages: all.slice(start),
+    hasMore: start > 0,
+    shown,
+    total: all.length
+  };
 }
 
 /**

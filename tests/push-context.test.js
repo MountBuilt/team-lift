@@ -26,9 +26,15 @@ test('buildContext: jobs, challenge, yesterday summary and pushes', () => {
   assert.equal(ctx.today, TODAY);
   assert.deepEqual(ctx.jobs, ['report', 'pushes']);
   assert.ok(ctx.challenge.name && ctx.challenge.reps > 0);
+  assert.ok(ctx.challenge.note, 'today challenge is framed as invitation-only');
   assert.equal(ctx.yesterday.date, '2026-07-12');
   assert.equal(ctx.yesterday.loggedCount, 1);
   assert.deepEqual(ctx.yesterday.silent, ['Dave']);
+  // Yesterday: Simon logged + ticked; Dave silent (not a challenge skip).
+  assert.deepEqual(ctx.challengeYesterday.ticked, ['Simon']);
+  assert.deepEqual(ctx.challengeYesterday.skippedAmongLogged, []);
+  assert.ok(ctx.grace.challengeToday);
+  assert.ok(ctx.grace.challengeYesterday);
 
   assert.equal(ctx.pushes.length, 1);
   const p = ctx.pushes[0];
@@ -37,6 +43,27 @@ test('buildContext: jobs, challenge, yesterday summary and pushes', () => {
   assert.equal(p.loggedYesterday, true);
   assert.equal(p.loggedToday, false);
   assert.ok(p.week && typeof p.week.workouts === 'number');
+});
+
+test('buildContext: challengeYesterday separates silent from logged-and-skipped', () => {
+  const ctx = buildContext({
+    ...base,
+    today: '2026-07-14',
+    entries: [
+      // Logged yesterday without ticking the challenge.
+      { id: 'u2_2026-07-13', userId: 'u2', name: 'Dave', date: '2026-07-13', steps: 5000, updatedAt: 'ts-3' },
+      // Simon silent yesterday.
+      { id: 'u1_2026-07-11', userId: 'u1', name: 'Simon', date: '2026-07-11', steps: 1000, updatedAt: 'ts-4' }
+    ]
+  });
+  assert.deepEqual(ctx.challengeYesterday.ticked, []);
+  assert.deepEqual(ctx.challengeYesterday.skippedAmongLogged, ['Dave']);
+  assert.deepEqual(ctx.yesterday.silent, ['Simon']);
+});
+
+test('buildContext: no challengeYesterday when report is not wanted', () => {
+  const ctx = buildContext({ ...base, wantReport: false, morning: [] });
+  assert.equal(ctx.challengeYesterday, null);
 });
 
 test('buildContext: no absolute weight anywhere in the payload', () => {

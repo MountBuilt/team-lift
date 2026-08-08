@@ -1,7 +1,7 @@
 import { userHasLogged } from '../lib/aggregate.js';
 import { weeklyAwards, AWARD_LABELS } from '../lib/awards.js';
 import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
-import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal, dayLabel } from '../lib/dates.js';
+import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import {
   pickFrom, CHALLENGE_QUIPS, todayBoardMembers
 } from '../lib/banter.js';
@@ -9,7 +9,8 @@ import {
   templateReport, reportFresh, templateWeeklyReport, weeklyReportFresh
 } from '../lib/report.js';
 import {
-  REPORT_TARGET, WEEKLY_TARGET, reportPreviewMessages, latestReportBody, visibleMessages
+  REPORT_TARGET, WEEKLY_TARGET, reportPreviewMessages, latestReportBody,
+  visibleMessages, clipCoachPreviewText
 } from '../lib/threads.js';
 import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
@@ -30,50 +31,54 @@ const card = (inner, i, extra = '') =>
 const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
 
 /**
- * Continuous morning-report thread preview.
- * Body = latest report (fresh AI, stored report, or offline template).
- * Activity strip: omit if only report posts; 1 non-report Aiden if Aiden-only;
- * latest 3 once crew has spoken. Full thread opens via existing expand.
- * Spec: 2026-08-07-home-stats-ai-feed-design.md
+ * Coach chat home card: last 3 messages in the continuous report thread.
+ * Morning report is just another bubble (role:report). Offline / pre-tick
+ * falls back to template or banter.report as a synthetic preview line.
+ * Expanded thread opens at the bottom with load-earlier windowing.
  */
 function reportCard(state, today) {
   const banter = state.banter;
   const thread = banter?.threads?.[REPORT_TARGET];
-  let body = null;
-  if (reportFresh(banter?.report, today)) body = banter.report.text;
-  else body = latestReportBody(banter, today);
-  if (!body) {
-    body = templateReport(
-      state.entries, state.users, today,
-      dailyChallenge(today, state.challenge.startDate)
-    );
-  }
-  const dayLabelText = banter?.report?.day
-    ? dayLabel(banter.report.day, today)
-    : 'Yesterday';
-  const preview = reportPreviewMessages(thread);
-  const strip = preview.messages.length
-    ? `<div class="report-preview-strip mt-2 space-y-1.5 border-t border-edge/60 pt-2">
-        ${preview.messages.map(m => {
-          const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'mate');
-          const cls = m.kind === 'aiden' ? 'text-accent' : 'text-neutral-300';
-          return `<p class="text-xs leading-snug">
-            <span class="font-black ${cls}">${esc(who)}</span>
-            <span class="text-neutral-400"> ${esc(m.text)}</span>
-          </p>`;
-        }).join('')}
-      </div>`
-    : '';
   const n = visibleMessages(thread).length;
+  const preview = reportPreviewMessages(thread);
+  let lines = preview.messages;
+  if (lines.length === 0) {
+    let body = null;
+    if (reportFresh(banter?.report, today)) body = banter.report.text;
+    else body = latestReportBody(banter, today);
+    if (!body) {
+      body = templateReport(
+        state.entries, state.users, today,
+        dailyChallenge(today, state.challenge.startDate)
+      );
+    }
+    lines = [{ kind: 'aiden', name: 'Aiden', text: body, role: 'report' }];
+  }
+  const previewHtml = `<div class="coach-preview-lines space-y-2">
+    ${lines.map(m => {
+      const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'mate');
+      const cls = m.kind === 'aiden' ? 'text-accent' : 'text-neutral-300';
+      const tag = m.role === 'report'
+        ? `<span class="coach-report-tag">report</span>`
+        : '';
+      return `<p class="coach-preview-line text-sm leading-snug">
+        <span class="font-black ${cls}">${esc(who)}</span>${tag}
+        <span class="text-neutral-400"> ${esc(clipCoachPreviewText(m.text))}</span>
+      </p>`;
+    }).join('')}
+  </div>`;
   const openHint = n > 0
-    ? `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap report to open thread · ${n} in thread</p>`
-    : `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap report to join the banter</p>`;
+    ? `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat · ${n} in thread</p>`
+    : `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat</p>`;
   return `
     <div class="flex items-center justify-between">
-      <h3 class="eyebrow">Aiden's morning report</h3>
-      <span class="eyebrow text-neutral-600">${esc(dayLabelText)}</span>
+      <h3 class="eyebrow">Coach chat</h3>
+      <span class="eyebrow text-neutral-600">${n > 0 ? `${n} msgs` : 'live'}</span>
     </div>
-    ${threadBlockHtml(REPORT_TARGET, esc(body) + strip + openHint, banter, { parentClass: 'report-parent' })}`;
+    ${threadBlockHtml(REPORT_TARGET, previewHtml + openHint, banter, {
+      parentClass: 'report-parent coach-preview',
+      hideCount: true
+    })}`;
 }
 
 /** Sunday week recap (AI or template). Thread target `weekly`. */

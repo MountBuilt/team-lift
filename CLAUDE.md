@@ -98,9 +98,11 @@ for development and optional hand/dry-run only. Ops: `docs/ops-nuc.md`.
 Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
 (plus 2026-07-26 for tick shape and 2026-08-02 moods).
 
-- **Tabs:** Dashboard (status, challenge, report preview, weekly, podium, feed)
+- **Tabs:** Dashboard (status, challenge, Coach chat, weekly, podium, feed)
   | **Stats** (week tiles, workouts panel, weight + steps charts) | Me.
   No LOG SOMETHING nudge card; (+) FAB is the log entry.
+  Sticky top nav uses `.safe-top` (`env(safe-area-inset-top)`) so PWA tabs
+  stay tappable under the notch (`black-translucent` + `viewport-fit=cover`).
 - **Recent activity is AI.** Client shows `factualFeedLine(entry)` until the
   tick writes `config/banter.feedLines[entryId] = { text, at }`, then that
   line sticks (no re-roll on edit). Never fall back to stacked pep-suffix
@@ -113,12 +115,19 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   non-agreeable moods (`combative`, `sulking`, `unhinged`, `filthy`).
 - **Threads are conversations after turn 1.** `aidenTurns` / `turnGuidance`:
   turn 1 hooks to the log or report; later turns go off topic and vary shape.
-- **Continuous morning report.** `config/banter.report` ({day, text}) still
-  holds today's pointer. Each morning Aiden **appends** a message with
-  `role: 'report'` to `threads.report` (no daily wipe). Message TTL **5 days**.
-  Home shows report body + activity strip (omit if only reports; 1 non-report
-  Aiden if solo; latest 3 once crew has spoken). Weekly recap still separate
-  and wipe-on-rewrite. Do NOT put coach lines back on chart cards.
+- **Coach chat (continuous report thread).** `config/banter.report` ({day, text})
+  still holds today's pointer for probes/pushes. Each morning Aiden **appends**
+  a message with `role: 'report'` to `threads.report` (no daily wipe). Message
+  TTL **5 days**. Home card title is **Coach chat**: always the **latest 3**
+  visible messages (report posts included, clipped ~180 chars). No separate
+  static report body. Open thread scrolls to **bottom** (newest); panel is
+  height-capped with **Load earlier** windowing (`THREAD_WINDOW_INITIAL` 40,
+  chunk 20). Empty thread falls back to `banter.report` / `templateReport` as a
+  synthetic preview only (not written). Weekly recap still separate and
+  wipe-on-rewrite. Do NOT put coach lines back on chart cards.
+- **Today's challenge is invitation-only in the report.** Context hands
+  `challenge` (today) + `challengeYesterday` (ticked / skippedAmongLogged).
+  Never claim someone avoided today's exercise; same-day grace applies.
 - **Week scope:** weekly standings from precomputed `thisWeek` (Mon–Sun) only.
 - **Threads** live on `config/banter.threads`:
   - Keys: `report` | `weekly` | `{entryId}` for feed rows.

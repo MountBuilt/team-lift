@@ -387,6 +387,15 @@ with its tests. Adapt where noted for multi-crew.
 | `scripts/lib/context.mjs` `MOODS` | `functions/src/aiden/moods.ts` | Verbatim. |
 | `scripts/storylines.mjs` | per-crew `state/aiden.storylines` | Self-expiring after 3 days, same rule. |
 
+**The tests port too, and they are the real head start.** Team Lift has 17
+`node --test` suites under `tests/`, of which these cover logic that survives:
+`dates`, `daypicker`, `challenge`, `aggregate`, `awards`, `reactions`,
+`report`, `threads`, `banter`, `storylines`, `push-context`, `push-coach`.
+Convert them to Vitest alongside their modules rather than writing new ones —
+they encode edge cases (UTC date parsing, streak boundaries, rest-day grace)
+that took real bugs to discover. Skip `wake`, `copywriter`, `firestore-rest`,
+`decide` and `esc`: they test NUC plumbing that does not exist here.
+
 **Do not port:** `js/firebase.js`, `js/push.js`, `js/state.js`, `js/ui/*`,
 `js/charts.js`, `scripts/orchestrator.mjs`, `scripts/watch-banter.mjs`,
 `scripts/lib/firestore-rest.mjs`, `scripts/lib/wake.mjs`, `sw.js`. All of it is

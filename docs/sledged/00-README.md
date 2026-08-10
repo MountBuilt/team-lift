@@ -1,7 +1,10 @@
 # Sledged — Build Documentation Pack
 
-**Date:** 2026-08-09
-**Status:** Approved. Decisions are settled — build to them.
+**Date:** 2026-08-09 (critique added 2026-08-10)
+**Status:** Approved pack + open critique. Decisions in 01–08 stand until
+explicitly revised; `09-build-plan-critique.md` is the input for the next
+planning pass (blockers, stack amendments, journeys, Aiden abuse surface).
+Do not start the app repo until §1 blockers in 09 are resolved or accepted.
 **Audience:** the coding agent (SuperGrok) and Simon.
 
 ---
@@ -56,9 +59,11 @@ Read all of these before writing code. They are short on purpose.
 | 06 | `06-build-plan.md` | Phases, lead times, launch checklist. **Start here for what to do first.** |
 | 07 | `07-agent-instructions.md` | Repo conventions. Becomes the new repo's `CLAUDE.md` / `AGENTS.md`. |
 | 08 | `08-costs-and-pricing.md` | Unit economics and the kill switches that keep them true. |
+| 09 | `09-build-plan-critique.md` | External critique of 01–08. Blockers, stack, UX, journeys, Aiden abuse, budget, invite security. **Read before the next planning pass.** |
 
 If you only read two: **06** tells you what to do next, **05** tells you what
-will get you rejected.
+will get you rejected. Before coding, also read **09** — several Phase 0/1
+items moved after review.
 
 ---
 

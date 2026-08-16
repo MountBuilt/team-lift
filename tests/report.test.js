@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   weightDelta, yesterdaySummary, templateReport, reportFresh,
-  weeklyReportFresh, templateWeeklyReport
+  weeklyReportFresh, templateWeeklyReport, reportIsUnseen
 } from '../js/lib/report.js';
 import { dailyChallenge } from '../js/lib/challenge.js';
 import { findAbsoluteWeight } from '../scripts/lib/context.mjs';
@@ -94,6 +94,14 @@ test('templateReport rotates across days', () => {
 test('templateReport copes with an empty roster and no challenge', () => {
   assert.equal(typeof templateReport([], [], TODAY), 'string');
   assert.ok(templateReport(entries, users, TODAY).length > 0);
+});
+
+test('reportIsUnseen is only today\'s report until they open Coach chat', () => {
+  assert.equal(reportIsUnseen('2026-08-16', null, '2026-08-16'), true);
+  assert.equal(reportIsUnseen('2026-08-16', '2026-08-15', '2026-08-16'), true);
+  assert.equal(reportIsUnseen('2026-08-16', '2026-08-16', '2026-08-16'), false);
+  assert.equal(reportIsUnseen('2026-08-15', null, '2026-08-16'), false);
+  assert.equal(reportIsUnseen(null, null, '2026-08-16'), false);
 });
 
 test('reportFresh accepts today and yesterday, rejects older or missing', () => {

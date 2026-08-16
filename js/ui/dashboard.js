@@ -1,14 +1,14 @@
 import { userHasLogged } from '../lib/aggregate.js';
 import {
   dailyChallenge, challengeDoneOn, challengeStreak,
-  challengeNudgeCard, challengeTickLabel
+  challengeNudgeCard, challengeTickLabel, snackCrewLine
 } from '../lib/challenge.js';
 import { todayStr, mondayOf, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import {
-  templateReport, reportFresh
+  templateReport, reportFresh, reportIsUnseen, SEEN_REPORT_KEY
 } from '../lib/report.js';
 import {
-  REPORT_TARGET, reportPreviewMessages, latestReportBody,
+  REPORT_TARGET, reportPreviewMessages, latestReportBody, currentReportDay,
   visibleMessages, clipCoachPreviewText
 } from '../lib/threads.js';
 import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
@@ -23,9 +23,10 @@ import {
   bindTrendLegend, trendVisibleUserIds
 } from './stats.js';
 
-// After a successful snack tick, keep the pair in the tree for one collapse
-// animation. Snapshot re-renders must not yank it mid-motion.
-let snackCollapseActive = false;
+// Play the collapse once after a successful tick. Later paints (tab return,
+// snapshot) omit the pair. Do not wait on animationend to stay gone.
+let playSnackCollapse = false;
+let snackCollapsePainted = false;
 
 /**
  * Coach chat home card: last 3 messages in the continuous report thread.
@@ -67,9 +68,13 @@ function reportCard(state, today) {
   const openHint = n > 0
     ? `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat · ${n} in thread</p>`
     : `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat</p>`;
+  let seenReport = null;
+  try { seenReport = localStorage.getItem(SEEN_REPORT_KEY); } catch { /* private */ }
+  const unseen = reportIsUnseen(currentReportDay(banter), seenReport, today);
+  const newPip = unseen ? '<span class="report-new" aria-label="New report">NEW</span>' : '';
   return `
     <div class="flex items-center justify-between">
-      <h3 class="eyebrow">Coach chat</h3>
+      <h3 class="eyebrow">Coach chat ${newPip}</h3>
       <span class="eyebrow text-neutral-600">${n > 0 ? `${n} msgs` : 'live'}</span>
     </div>
     ${threadBlockHtml(REPORT_TARGET, previewHtml + openHint, banter, {
@@ -147,18 +152,33 @@ function reducedMotion() {
     && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
 }
 
-// Two equal cards: snack + nudge. Hidden after this user ticks today.
+function snackStripHtml(state, today, fx) {
+  const ch = dailyChallenge(today, state.challenge.startDate);
+  const line = snackCrewLine(state.entries, state.users, today, ch);
+  if (!line) return '';
+  return card(
+    `<p class="text-sm leading-snug text-neutral-300"><span class="eyebrow">Snack</span> ${esc(line)}</p>`,
+    fx,
+    'snack-crew-strip'
+  );
+}
+
+// Two equal cards until this user ticks. After that, a crew strip.
 function snackPairHtml(state, today, fx) {
   const ch = dailyChallenge(today, state.challenge.startDate);
   const me = state.currentUser;
   const meDone = challengeDoneOn(state.entries, today).includes(me.id);
   if (today > state.challenge.endDate) return '';
-  if (meDone && !snackCollapseActive) return '';
+  if (meDone && !(playSnackCollapse && !snackCollapsePainted)) {
+    playSnackCollapse = false;
+    return snackStripHtml(state, today, fx);
+  }
 
   const myStreak = challengeStreak(state.entries, me.id, today);
   const tick = challengeTickLabel(today);
   const nudge = challengeNudgeCard(today, ch.name);
-  const collapsing = meDone && snackCollapseActive;
+  const collapsing = meDone && playSnackCollapse;
+  if (collapsing) snackCollapsePainted = true;
   return `<div id="snack-pair" class="flex gap-2 items-stretch${collapsing ? ' snack-pair-collapse' : ''}">
     ${card(`
       <div class="flex items-center justify-between gap-2">
@@ -201,7 +221,13 @@ export function renderDashboard(container, state, {
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
-  bindThreads(container, state.banter);
+  bindThreads(container, state.banter, {
+    onOpen: (target) => {
+      if (target !== REPORT_TARGET) return;
+      try { localStorage.setItem(SEEN_REPORT_KEY, today); } catch { /* ignore */ }
+      container.querySelector('.report-new')?.remove();
+    }
+  });
   initWorkoutTooltip(container.querySelector('#workouts-card'));
   bindChartEmpties(container);
   bindTrendLegend(container, state);
@@ -213,7 +239,9 @@ export function renderDashboard(container, state, {
   const pair = container.querySelector('#snack-pair');
   if (pair?.classList.contains('snack-pair-collapse')) {
     pair.addEventListener('animationend', () => {
-      snackCollapseActive = false;
+      playSnackCollapse = false;
+      const strip = snackStripHtml(state, today, 0);
+      if (strip) pair.insertAdjacentHTML('afterend', strip);
       pair.remove();
     }, { once: true });
   }
@@ -232,12 +260,14 @@ export function renderDashboard(container, state, {
     btn.disabled = true;
     btn.textContent = 'SAVING…';
     burstFrom(btn);
-    snackCollapseActive = !reducedMotion();
+    playSnackCollapse = !reducedMotion();
+    snackCollapsePainted = false;
     try {
       await saveEntry(state.currentUser.id, state.currentUser.name, todayStr(), { dailyChallenge: true });
     } catch (err) {
       console.error(err);
-      snackCollapseActive = false;
+      playSnackCollapse = false;
+      snackCollapsePainted = false;
       btn.disabled = false;
       btn.textContent = label;
     }

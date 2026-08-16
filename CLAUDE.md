@@ -101,8 +101,11 @@ when orchestrator/watcher code changed.
 - Web push (`js/push.js`, toggle on the Me view): raw VAPID, subscription
   stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs`: morning
   motivation from 7:30am (skipped after 8:30pm), evening reminder from 8:30pm
-  only if nothing is logged that day; state in `config/push`
-  (`lastMorning`/`lastEvening`) so missed ticks self-heal and never double-send.
+  only if nothing is logged that day; **report-up** from 7:30 once today's
+  report exists (`lastReport`, replaces the morning wave so they are not
+  doubled); **Aiden-replied** to the humans he just answered (any hour).
+  State in `config/push` (`lastMorning`/`lastEvening`/`lastReport`) so missed
+  ticks self-heal and never double-send.
 
 ## Aiden (2026-08-07) — do not regress
 
@@ -123,9 +126,12 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
 - **Aiden reacts as a comment only when spoken to (2026-08-02).** Parent is
   Aiden's voice again, so unprompted feed praise stays off. `collectThreadJobs`
   is human-led only.
-- **Aiden has moods (2026-08-02).** `MOODS` in `scripts/lib/context.mjs`, one
-  picked per tick from `seed` (minute-of-epoch) as `context.mood`. Includes
-  non-agreeable moods (`combative`, `sulking`, `unhinged`, `filthy`).
+- **Aiden has moods (2026-08-02, event-sticky 2026-08-16).** `MOODS` in
+  `scripts/lib/context.mjs`. `resolveMood` picks from the event that woke
+  him (report data, a new log, a new thread, a delete, a push wave) and
+  persists `{ name, targets, trigger }` on `config/banter.mood` until the
+  next event. Same-thread follow-ups stay in that mood (`sticky: true`).
+  Includes non-agreeable moods (`combative`, `sulking`, `unhinged`, `filthy`).
 - **Threads are conversations after turn 1.** `aidenTurns` / `turnGuidance`:
   turn 1 hooks to the log or report; later turns go off topic and vary shape.
 - **Coach chat (continuous report thread).** `config/banter.report` ({day, text})
@@ -149,7 +155,9 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   - User text max 160, Aiden 240, feed line 200. Author can bin own messages.
   - Delete **before** Aiden answers → hard remove; **after** → soft-delete.
   - Feed threads purged on **date only** (3 days). Report messages 5 days.
-    Never whole-map PATCH of `threads` or `feedLines`.
+    Aged report-thread lines are digested into `memory` on purge (weekly
+    wipe no longer feeds memory). Never whole-map PATCH of `threads` or
+    `feedLines`.
 - **Never PATCH the whole `threads` map.** The client writes one key via
   `FieldPath`; the tick writes a per-key `threadWritePlan` computed against a
   freshly re-read doc. Whole-map writes were destroying comments posted while

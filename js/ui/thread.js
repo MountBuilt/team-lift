@@ -421,7 +421,7 @@ function bindPanel(panel, target) {
  * Wire tap-to-expand on a container that already has threadBlockHtml output.
  * Re-bind after every dashboard/feed re-render.
  */
-export function bindThreads(container, banter) {
+export function bindThreads(container, banter, { onOpen } = {}) {
   if (!container) return;
   const meId = state.currentUser?.id;
 
@@ -433,6 +433,7 @@ export function bindThreads(container, banter) {
     if (!root || !target) return;
 
     const open = () => {
+      if (typeof onOpen === 'function') onOpen(target);
       if (isExpanded(root, target)) {
         root.querySelector(`[data-thread-input="${CSS.escape(target)}"]`)?.focus();
         return;

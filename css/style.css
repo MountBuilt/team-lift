@@ -359,6 +359,30 @@ nav.safe-top > .tab {
   100% { opacity: 0; transform: scale(0.92) translateY(-14px); max-height: 0; margin-bottom: -0.75rem; }
 }
 
+.fx-dot-live {
+  animation: fx-dot-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.feed-line-arrive {
+  animation: feed-arrive 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes feed-arrive {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+
+.report-new {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--heat, #f97316);
+  color: #111;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  vertical-align: 0.15em;
+}
+
 /* Whole-team banner: slow celebratory sheen. */
 .team-hit {
   background: linear-gradient(110deg,
@@ -451,8 +475,8 @@ nav.safe-top > .tab {
 
 /* ---- Reduced motion: the show degrades to a plain render. ---- */
 @media (prefers-reduced-motion: reduce) {
-  .fx-on .fx-card, .fx-on .fx-dot, .stamp, .sheet, .sheet-backdrop, .chip-pop,
-  .snack-pair-collapse {
+  .fx-on .fx-card, .fx-on .fx-dot, .fx-dot-live, .stamp, .sheet, .sheet-backdrop,
+  .chip-pop, .snack-pair-collapse, .feed-line-arrive {
     animation: none;
   }
   .heatbar-fill, .team-hit, .flame { animation: none; }

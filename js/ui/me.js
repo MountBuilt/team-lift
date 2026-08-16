@@ -10,14 +10,6 @@ import { openLogModal } from './logmodal.js';
 
 let meChart = null;
 
-// The weekly target as three fillable slabs: the whole game is 3+ workouts.
-function targetSlabs(count, color) {
-  const slab = (i) => `
-    <span class="h-2.5 flex-1 rounded-full ${i < count ? '' : 'bg-edge'}"
-      ${i < count ? `style="background:${color}"` : ''}></span>`;
-  return `<span class="flex w-24 items-center gap-1">${[0, 1, 2].map(slab).join('')}</span>`;
-}
-
 function statTile(big, label, opts = {}) {
   return `
     <div class="flex-1 rounded-xl bg-ink border border-edge px-2 py-3 text-center min-w-[4.5rem]">
@@ -43,7 +35,6 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
   const stepsWeek = weeklySteps(state.entries, me.id, monday);
   const streak = challengeStreak(state.entries, me.id, today);
   const pushOn = me.push?.enabled === true;
-  const hit = wkCount >= 3;
 
   const row = (e) => {
     const bits = [];
@@ -65,18 +56,13 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
         <p class="eyebrow">This is you, champion</p>
         <h1 class="display text-[2.6rem] leading-none tracking-tight mt-1" style="color:${color}">
           ${esc(me.name.toUpperCase())}</h1>
-        <div class="mt-3 flex items-center justify-between">
-          <span class="text-sm font-bold ${hit ? 'text-green-400' : 'text-neutral-400'}">
-            ${hit ? 'Weekly target smashed 💪' : `${wkCount}/3 workouts this week`}</span>
-          ${targetSlabs(wkCount, hit ? '#4ade80' : color)}
-        </div>
       </header>
       <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:1">
         <h3 class="mb-3 eyebrow">This week</h3>
         <div class="flex flex-wrap gap-2">
           ${statTile(String(daysLogged), 'days logged')}
           ${statTile(compactNumber(stepsWeek), 'steps')}
-          ${statTile(String(wkCount), 'workouts', { hot: hit })}
+          ${statTile(String(wkCount), 'workouts')}
           ${statTile(streak > 0 ? String(streak) : '—', streak >= 2 ? `🔥 streak` : 'snack streak')}
         </div>
       </section>

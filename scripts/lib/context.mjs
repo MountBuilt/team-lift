@@ -46,11 +46,10 @@ const msgView = (m) => ({
 });
 
 /**
- * Aiden's mood for this tick. One is picked per run (the orchestrator passes a
- * clock-derived `seed`) and handed to the model as a steer, so two replies in
- * the same conversation an hour apart do not come out of the same flat, even,
- * always-agreeable register. Deliberately includes moods that are NOT
- * agreeable: the crew's complaint was that he never pushes back.
+ * Aiden's mood. Picked from the event that woke him (report data, a new log,
+ * a new thread, a delete, a push wave) and then held until the next event.
+ * Same-thread follow-ups keep it so he does not flip personality mid-chat.
+ * Deliberately includes moods that are NOT agreeable.
  */
 export const MOODS = [
   { name: 'wired', note: 'Overcaffeinated and loud. Short bursts, exclamations, ready to start something.' },
@@ -65,10 +64,105 @@ export const MOODS = [
   { name: 'affectionate', note: 'Weirdly, uncomfortably warm about one of them. Too much. It should make him squirm.' }
 ];
 
-/** Deterministic but rotating: the seed changes every tick. */
+const moodByName = (name) => MOODS.find(m => m.name === name) || MOODS[2];
+
+const eventTargets = (opts) =>
+  [...new Set((opts.threadJobs || []).map(j => j.target).filter(Boolean))];
+
+/** Clock seed kept for tests / fallback hash. Prefer moodFromEvent. */
 export function moodFor(seed) {
   const n = Math.abs(Math.trunc(Number(seed) || 0));
   return MOODS[n % MOODS.length];
+}
+
+/**
+ * Keep the current mood when this tick is only more chat on the same
+ * thread(s) that set it. Any new report, log, push wave, or new target
+ * is an event and he reacts.
+ */
+export function shouldRefreshMood(previous, opts = {}) {
+  if (!previous?.name) return true;
+  if (opts.wantReport || opts.wantWeekly) return true;
+  if ((opts.feedLineJobs || []).length) return true;
+  if ((opts.morning || []).length || (opts.evening || []).length) return true;
+  const targets = eventTargets(opts);
+  if (targets.length === 0) return true;
+  const held = new Set(previous.targets || []);
+  return targets.some(t => !held.has(t));
+}
+
+function pickMoodName(opts = {}) {
+  const jobs = opts.threadJobs || [];
+  if (jobs.some(j => (j.deletesToAck || []).length > 0)) return 'sulking';
+
+  const hasReport = Boolean(opts.wantReport);
+  const hasFeed = (opts.feedLineJobs || []).length > 0;
+  const hasThread = jobs.length > 0;
+  const hasMorning = (opts.morning || []).length > 0;
+  const hasEvening = (opts.evening || []).length > 0;
+
+  if (hasEvening && !hasReport && !hasFeed && !hasThread && !hasMorning) {
+    return 'affectionate';
+  }
+
+  if (hasReport) {
+    const y = opts.yesterday || {};
+    const total = Number(y.totalMembers) || 0;
+    const logged = Number(y.loggedCount) || 0;
+    const skipped = opts.challengeYesterday?.skippedAmongLogged || [];
+    if (total > 0 && logged === total) return 'wired';
+    if (skipped.length >= 2) return 'filthy';
+    const silent = Array.isArray(y.silent) ? y.silent.length : (total - logged);
+    if (total > 0 && silent >= total / 2) return 'combative';
+    if (total > 0 && logged / total < 0.35) return 'bored';
+    return 'dry';
+  }
+
+  if (hasFeed) {
+    if ((opts.feedLineJobs || []).some(e => e.bigEffort === true || isBigEffort(e))) {
+      return 'grandiose';
+    }
+    return 'dry';
+  }
+
+  if (hasThread) return 'combative';
+  if (hasMorning) return 'wired';
+  return 'dry';
+}
+
+/** Mood that fits this event. Always a member of MOODS plus targets. */
+export function moodFromEvent(opts = {}) {
+  const picked = moodByName(pickMoodName(opts));
+  return {
+    name: picked.name,
+    note: picked.note,
+    targets: eventTargets(opts),
+    trigger: [
+      opts.wantReport ? 'report' : '',
+      (opts.feedLineJobs || []).length ? 'feed' : '',
+      eventTargets(opts).length ? `thread:${eventTargets(opts).slice().sort().join(',')}` : '',
+      (opts.evening || []).length ? 'evening' : '',
+      (opts.morning || []).length ? 'morning' : ''
+    ].filter(Boolean).join('|') || 'event'
+  };
+}
+
+/**
+ * Sticky mood: keep previous through same-thread follow-ups, otherwise
+ * react to the new event. `sticky: true` tells the prompt he is still in it.
+ */
+export function resolveMood(previous, opts = {}) {
+  if (!shouldRefreshMood(previous, opts)) {
+    const held = moodByName(previous.name);
+    return {
+      name: held.name,
+      note: `Still ${held.name}. ${held.note}`,
+      targets: [...new Set([...(previous.targets || []), ...eventTargets(opts)])],
+      trigger: previous.trigger || '',
+      sticky: true
+    };
+  }
+  return moodFromEvent(opts);
 }
 
 /**
@@ -79,11 +173,12 @@ export function moodFor(seed) {
  * @param {object[]} opts.feedLineJobs entries needing AI feed lines (from collectFeedLineJobs)
  * @param {object[]} opts.morning     users due a morning push
  * @param {object[]} opts.evening     users due an evening push
+ * @param {object}   [opts.previousMood] persisted mood from config/banter
  */
 export function buildContext({
   users, entries, banter, challengeStart, today,
   wantReport = false, wantWeekly = false, threadJobs = [], feedLineJobs = [],
-  morning = [], evening = [], seed = 0
+  morning = [], evening = [], previousMood = null
 }) {
   const monday = mondayOf(today);
   const yesterday = addDays(today, -1);
@@ -167,11 +262,22 @@ export function buildContext({
     skippedAmongLogged: yLogged.filter(m => !m.dailyChallenge).map(m => m.name)
   } : null;
 
+  const mood = resolveMood(previousMood || banter?.mood, {
+    wantReport,
+    wantWeekly,
+    threadJobs,
+    feedLineJobs,
+    morning,
+    evening,
+    yesterday: ySummary,
+    challengeYesterday
+  });
+
   return {
     today,
     botName: 'Aiden',
     jobs,
-    mood: moodFor(seed),
+    mood,
     // TODAY's invitation only. Nobody has completed or failed it yet at report
     // time (same-day grace). Do not name anyone as avoiding this exercise.
     challenge: {

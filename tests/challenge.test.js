@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   EXERCISES, dailyChallenge, challengeStreak, challengeDoneOn,
   challengeNudge, challengeNudgeCard, challengeTickLabel, TICK_LABELS, NUDGES,
-  NUDGE_EYEBROWS
+  NUDGE_EYEBROWS, snackCrewLine
 } from '../js/lib/challenge.js';
 import { dateRange, addDays } from '../js/lib/dates.js';
 
@@ -148,4 +148,25 @@ test('challengeStreak ignores entries without an explicit dailyChallenge tick', 
     e('u1', '2026-07-09', { dailyChallenge: true })
   ];
   assert.equal(challengeStreak(entries, 'u1', '2026-07-10'), 1);
+});
+
+test('snackCrewLine names who ticked and never who did not', () => {
+  const users = [
+    { id: 'u1', name: 'Simon' },
+    { id: 'u2', name: 'Hunt' },
+    { id: 'u3', name: 'Morry' }
+  ];
+  const ch = { name: 'burpees', reps: 8 };
+  assert.equal(snackCrewLine([], users, '2026-08-16', ch), null);
+  assert.equal(
+    snackCrewLine([e('u1', '2026-08-16', { dailyChallenge: true })], users, '2026-08-16', ch),
+    'Simon smashed 8 burpees'
+  );
+  const two = snackCrewLine([
+    e('u1', '2026-08-16', { dailyChallenge: true }),
+    e('u2', '2026-08-16', { dailyChallenge: true })
+  ], users, '2026-08-16', ch);
+  assert.equal(two, '2/3 smashed 8 burpees · Simon, Hunt');
+  assert.equal(two.includes('Morry'), false);
+  assert.equal(two.includes('—'), false);
 });

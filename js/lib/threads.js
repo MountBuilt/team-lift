@@ -281,6 +281,25 @@ export function appendReportMessage(thread, { text, day, nowIso }) {
 }
 
 /**
+ * Memory digest of coach-chat lines that just aged out of the 5-day window.
+ * Weekly wipe is gone, so this is how callbacks survive.
+ */
+export function digestDroppedReportMessages(prevThreads, nextThreads, today) {
+  const before = visibleMessages(prevThreads?.[REPORT_TARGET]);
+  const afterIds = new Set(visibleMessages(nextThreads?.[REPORT_TARGET]).map(m => m.id));
+  const dropped = before.filter(m => m?.id && !afterIds.has(m.id));
+  if (dropped.length === 0) return null;
+  const lines = [];
+  for (const m of dropped) {
+    const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'someone');
+    const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (text) lines.push(`${who}: ${text}`);
+  }
+  if (lines.length === 0) return null;
+  return { day: today, lines: lines.slice(0, 8) };
+}
+
+/**
  * Drop messages in threads.report older than REPORT_THREAD_MAX_AGE_DAYS.
  * Keeps the report key; may leave an empty messages array.
  */
@@ -405,6 +424,17 @@ export function threadMessageWindow(messages, shownFromEnd = THREAD_WINDOW_INITI
  * Body text for the home report card.
  * Prefer today's banter.report when fresh; else latest role:report message text.
  */
+/** Day stamp of the current morning report, from the pointer or the thread. */
+export function currentReportDay(banter) {
+  if (banter?.report?.day) return banter.report.day;
+  if (typeof banter?.reportDay === 'string' && banter.reportDay) return banter.reportDay;
+  const msgs = visibleMessages(banter?.threads?.[REPORT_TARGET]);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'report' && msgs[i].reportDay) return msgs[i].reportDay;
+  }
+  return null;
+}
+
 export function latestReportBody(banter, today) {
   const r = banter?.report;
   if (r?.text && r.day === today) return r.text;

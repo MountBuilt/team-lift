@@ -91,6 +91,25 @@ export function challengeDoneOn(entries, dateStr) {
   return entries.filter(e => e.date === dateStr && e.dailyChallenge === true).map(e => e.userId);
 }
 
+/**
+ * One line after this user has ticked: who smashed today's snack.
+ * Names the ticked crew only. Never who is still outstanding.
+ */
+export function snackCrewLine(entries, users, dateStr, challenge) {
+  if (!challenge) return null;
+  const doneIds = new Set(challengeDoneOn(entries, dateStr));
+  const done = (users || []).filter(u => doneIds.has(u.id));
+  if (done.length === 0) return null;
+  const move = `${challenge.reps} ${challenge.name}`;
+  const n = done.length;
+  const total = (users || []).length;
+  if (n === 1) return `${done[0].name} smashed ${move}`;
+  if (total > 1 && n === total) return `The lot of you smashed ${move}`;
+  const names = done.map(u => u.name);
+  if (names.length <= 3) return `${n}/${total} smashed ${move} · ${names.join(', ')}`;
+  return `${n}/${total} smashed ${move}`;
+}
+
 // Consecutive ticked days ending today. A day still in progress doesn't
 // break the chain: done-yesterday-but-not-yet-today still counts the run.
 export function challengeStreak(entries, userId, todayStr) {

@@ -41,8 +41,8 @@ const GROK_AUTH_FILE = join(homedir(), '.grok', 'auth.json');
 
 /** Claude Messages API model. Swap to 'claude-opus-5' for sharper (metered) copy. */
 export const CLAUDE_MODEL = 'claude-sonnet-5';
-/** SuperGrok / Grok Build model alias. */
-export const GROK_MODEL = 'grok-4.5';
+/** SuperGrok / Grok Build model alias. Default CLI model as of 2026-08-12. */
+export const GROK_MODEL = 'grok-4.6';
 /** Back-compat: name of the active default model for logging. */
 export const MODEL = GROK_MODEL;
 export const MAX_TOKENS = 4000;

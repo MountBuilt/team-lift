@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildContext, validateCopy, findAbsoluteWeight, copySchema, REPORT_MAX, MOODS } from '../scripts/lib/context.mjs';
+import { buildContext, validateCopy, findAbsoluteWeight, copySchema, REPORT_MAX } from '../scripts/lib/context.mjs';
 import { REPORT_TARGET } from '../js/lib/threads.js';
 
 const TODAY = '2026-07-13';
@@ -302,12 +302,44 @@ test('copySchema is a strict object schema with no dynamic keys', () => {
   assert.equal(s.properties.feedLines.items.additionalProperties, false);
 });
 
-test('buildContext: mood rotates with the seed', () => {
-  const a = buildContext({ ...base, seed: 0 }).mood;
-  const b = buildContext({ ...base, seed: 1 }).mood;
-  assert.ok(a.name && a.note);
-  assert.notEqual(a.name, b.name);
-  assert.equal(buildContext({ ...base, seed: MOODS.length }).mood.name, a.name);
+test('buildContext: Monday report is last week, mid-week is yesterday', () => {
+  const monday = buildContext({ ...base, today: '2026-07-13', wantReport: true });
+  assert.equal(monday.reportKind, 'week');
+  assert.ok(monday.lastWeek);
+  assert.ok(monday.grace.mondayReport);
+
+  const tue = buildContext({ ...base, today: '2026-07-14', wantReport: true });
+  assert.equal(tue.reportKind, 'day');
+});
+
+test('buildContext: mood comes from the event, then sticks on the same thread', () => {
+  const first = buildContext({
+    ...base,
+    wantReport: false,
+    morning: [],
+    threadJobs: [{
+      target: REPORT_TARGET,
+      kind: 'report',
+      newUser: [{ id: 'm9', kind: 'user', name: 'Simon', text: 'oi', at: 't' }],
+      deletesToAck: [{ name: 'Simon' }]
+    }]
+  });
+  assert.equal(first.mood.name, 'sulking');
+
+  const again = buildContext({
+    ...base,
+    wantReport: false,
+    morning: [],
+    previousMood: first.mood,
+    threadJobs: [{
+      target: REPORT_TARGET,
+      kind: 'report',
+      newUser: [{ id: 'm10', kind: 'user', name: 'Hunt', text: 'nah', at: 't2' }],
+      deletesToAck: []
+    }]
+  });
+  assert.equal(again.mood.name, 'sulking');
+  assert.equal(again.mood.sticky, true);
 });
 
 test('buildContext: turnGuidance takes the stats off the table after Aiden has spoken', () => {

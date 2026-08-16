@@ -7,8 +7,10 @@ import {
   digestCardThreads, wipeCardThreads, purgeStaleFeedThreads, applyThreadReplies,
   aidenThinkingState,
   threadWritePlan, deleteUserMessage, appendUserMessage,
-  appendReportMessage, purgeReportThreadMessages, collectFeedLineJobs,
+  appendReportMessage, purgeReportThreadMessages, digestDroppedReportMessages,
+  collectFeedLineJobs,
   purgeStaleFeedLines, feedLineWritePlan, reportPreviewMessages, latestReportBody,
+  currentReportDay,
   clipCoachPreviewText, threadMessageWindow,
   CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, REPORT_THREAD_MAX_AGE_DAYS,
   COACH_PREVIEW_LIMIT, THREAD_WINDOW_INITIAL
@@ -461,6 +463,24 @@ describe('continuous report thread', () => {
     assert.equal(msgs.some(m => m.id === 'c'), true);
   });
 
+  it('digestDroppedReportMessages keeps the actual text of purged coach lines', () => {
+    const prev = {
+      [REPORT_TARGET]: {
+        messages: [
+          { id: 'a', kind: 'aiden', name: 'Aiden', text: 'old roast', at: '2026-07-10T03:00:00.000Z' },
+          { id: 'b', kind: 'user', name: 'Simon', text: 'still here', at: '2026-07-17T12:00:00.000Z' }
+        ]
+      }
+    };
+    const next = purgeReportThreadMessages(prev, { today: '2026-07-19' });
+    const digest = digestDroppedReportMessages(prev, next, '2026-07-19');
+    assert.ok(digest);
+    assert.equal(digest.day, '2026-07-19');
+    assert.ok(digest.lines.some(l => l.includes('old roast')));
+    assert.equal(digest.lines.some(l => l.includes('still here')), false);
+    assert.equal(digestDroppedReportMessages(next, next, '2026-07-19'), null);
+  });
+
   it('reportPreviewMessages: always last N including report posts (Coach chat)', () => {
     const onlyReport = {
       messages: [
@@ -501,6 +521,22 @@ describe('continuous report thread', () => {
     assert.equal(c.messages[2].text, 'again');
 
     assert.deepEqual(reportPreviewMessages({ messages: [] }), { mode: 'none', messages: [] });
+  });
+
+  it('currentReportDay prefers the pointer then the latest report post', () => {
+    assert.equal(currentReportDay({ report: { day: '2026-08-16', text: 'x' } }), '2026-08-16');
+    assert.equal(currentReportDay({ reportDay: '2026-08-15' }), '2026-08-15');
+    assert.equal(currentReportDay({
+      threads: {
+        [REPORT_TARGET]: {
+          messages: [
+            { id: '1', kind: 'aiden', role: 'report', reportDay: '2026-08-14', text: 'old' },
+            { id: '2', kind: 'aiden', role: 'report', reportDay: '2026-08-16', text: 'new' }
+          ]
+        }
+      }
+    }), '2026-08-16');
+    assert.equal(currentReportDay({}), null);
   });
 
   it('clipCoachPreviewText truncates long report posts for the home card', () => {

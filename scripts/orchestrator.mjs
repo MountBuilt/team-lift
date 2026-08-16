@@ -41,10 +41,11 @@ import { todayStr } from '../js/lib/dates.js';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
   applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET,
-  appendReportMessage, purgeReportThreadMessages, collectFeedLineJobs,
-  purgeStaleFeedLines, feedLineWritePlan
+  appendReportMessage, purgeReportThreadMessages, digestDroppedReportMessages,
+  collectFeedLineJobs, purgeStaleFeedLines, feedLineWritePlan, hhmm
 } from '../js/lib/threads.js';
 import { mondayOf } from '../js/lib/dates.js';
+import { reportPushPayload, replyPushPayload, replyPushUserIds } from '../js/lib/pushes.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -136,10 +137,16 @@ async function main() {
     if (probe.wantWeekly) t = wipeCardThreads(t, [WEEKLY_TARGET]);
     return t;
   };
-  const threads = buildThreads(banter?.threads);
+  const rawThreads = banter?.threads || {};
+  const threads = buildThreads(rawThreads);
   const feedLinesBase = purgeStaleFeedLines(banter?.feedLines || {}, { today });
 
   let memory = trimMemory(banter?.memory || []);
+  const droppedCoach = digestDroppedReportMessages(rawThreads, threads, today);
+  if (droppedCoach) {
+    memory = trimMemory([...memory, droppedCoach]);
+    log(`digested ${droppedCoach.lines.length} aged coach-chat lines to memory`);
+  }
   if (probe.wantReport) {
     log(`daily report due: reportDay ${banter?.reportDay ?? '(none)'} -> ${today} (append, no wipe)`);
   }
@@ -156,10 +163,16 @@ async function main() {
     entries, feedLines: feedLinesBase, today
   });
   const work = decidePushWork({ users, entries, pushState, now, today });
+  // One lock-screen ping: if the report is ready to announce, it replaces
+  // the generated morning wave so nobody gets two at 7:30.
+  if (probe.reportPushDue && work.morningDue) {
+    work.morning = [];
+  }
 
   log(`report=${probe.wantReport} weekly=${probe.wantWeekly} threads=${threadJobs.length}` +
       `(${threadJobs.map(j => j.kind).join(',')}) feedLines=${feedLineJobs.length} ` +
       `morning=${work.morning.length} evening=${work.evening.length} ` +
+      `reportPush=${probe.reportPushDue ? 'due' : 'no'} ` +
       `probe=${probe.unseenComment ? 'comment' : probe.scanStale ? 'staleScan' : 'time'}`);
 
   const pushStatePatch = {};
@@ -175,12 +188,16 @@ async function main() {
     // the probe goes quiet again, and flush any thread / feedLine purge.
     const plan = threadWritePlan(banter?.threads || {}, threads);
     const flPlan = feedLineWritePlan(banter?.feedLines || {}, feedLinesBase);
-    await writeBanter(
-      { threadScanAt: startedIso },
-      ['threadScanAt'],
-      plan,
-      flPlan
-    );
+    const idleObj = { threadScanAt: startedIso };
+    const idlePaths = ['threadScanAt'];
+    if (droppedCoach) {
+      idleObj.memory = memory;
+      idlePaths.push('memory');
+    }
+    await writeBanter(idleObj, idlePaths, plan, flPlan);
+    if (probe.reportPushDue) {
+      await sendReportUp(users, banter?.report?.text, pushStatePatch, work);
+    }
     if (Object.keys(pushStatePatch).length) {
       await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
     }
@@ -201,11 +218,9 @@ async function main() {
     feedLineJobs,
     morning: work.morning,
     evening: work.evening,
-    // Minute-of-epoch: rotates Aiden's mood on every tick, so a thread that
-    // runs all evening does not get ten replies in the same register.
-    seed: Math.floor(now.getTime() / 60000)
+    previousMood: banter?.mood
   });
-  log(`mood=${context.mood.name}`);
+  log(`mood=${context.mood.name}${context.mood.sticky ? ' (sticky)' : ''}`);
   const backend = backendName();
   log(`calling ${backend} backend (${modelFor(backend)}) for jobs=[${context.jobs.join(',')}] ` +
       `contextBytes=${JSON.stringify(context).length}`);
@@ -251,8 +266,17 @@ async function main() {
   }
   const flPlan = feedLineWritePlan(fresh?.feedLines || banter?.feedLines || {}, nextFeedLines);
 
-  const obj = { threadScanAt: startedIso, memory };
-  const paths = ['threadScanAt', 'memory'];
+  const obj = {
+    threadScanAt: startedIso,
+    memory,
+    mood: {
+      name: context.mood.name,
+      targets: context.mood.targets || [],
+      trigger: context.mood.trigger || '',
+      at: startedIso
+    }
+  };
+  const paths = ['threadScanAt', 'memory', 'mood'];
 
   if (probe.wantReport && report) {
     obj.report = { day: today, text: report };
@@ -280,6 +304,17 @@ async function main() {
   // attempted. A single flaky endpoint must not re-spam everyone else on the
   // next 30s tick. (All-or-nothing stamping did exactly that on 2026-08-06:
   // Hunt/Phill failed, Simon/Pery got ~6 morning pushes in three minutes.)
+  const clock = hhmm(now);
+  const reportTextNow = obj.report?.text || fresh?.report?.text || banter?.report?.text;
+  const reportDayNow = obj.reportDay || fresh?.reportDay || banter?.reportDay;
+  const reportUpNow = reportDayNow === today && reportTextNow
+    && (pushState?.lastReport ?? '') !== today
+    && clock >= '07:30' && clock < '20:30';
+  if (reportUpNow) {
+    await sendReportUp(users, reportTextNow, pushStatePatch, work);
+    work.morning = [];
+  }
+
   const copyFor = (u, kind) => (copy.pushes || []).find(p => p.userId === u.id && p.kind === kind);
   for (const [kind, targets, stamp] of [
     ['morning', work.morning, 'lastMorning'],
@@ -288,6 +323,7 @@ async function main() {
     if (targets.length === 0) continue;
     const results = await Promise.all(targets.map(u => {
       const p = copyFor(u, kind);
+      if (!p?.title || !p?.body) return Promise.resolve(true);
       return sendPush(u, { title: p.title, body: p.body });
     }));
     pushStatePatch[stamp] = today;
@@ -296,10 +332,37 @@ async function main() {
       log(`${kind}: ${failed}/${targets.length} sends failed - day stamped anyway (no re-spam)`);
     }
   }
+
+  if (Object.keys(replies).length) {
+    await sendReplyPushes(users, threadJobs, replies);
+  }
+
   if (Object.keys(pushStatePatch).length) {
     await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
   }
   log('tick complete');
+}
+
+async function sendReportUp(users, reportText, pushStatePatch, work) {
+  const payload = reportPushPayload(reportText);
+  const enabled = (users || []).filter(u => u.push?.enabled === true && u.push.endpoint);
+  const results = await Promise.all(enabled.map(u => sendPush(u, payload)));
+  pushStatePatch.lastReport = todayStr();
+  if (work?.morningDue) pushStatePatch.lastMorning = todayStr();
+  const failed = results.filter(ok => !ok).length;
+  log(`report-up: ${enabled.length - failed}/${enabled.length} sent`);
+}
+
+async function sendReplyPushes(users, threadJobs, replies) {
+  const byId = new Map((users || []).map(u => [u.id, u]));
+  for (const userId of replyPushUserIds(threadJobs, replies)) {
+    const u = byId.get(userId);
+    if (!u?.push?.enabled || !u.push.endpoint) continue;
+    const job = (threadJobs || []).find(j =>
+      replies[j.target] && (j.newUser || []).some(m => m.userId === userId));
+    const text = job ? replies[job.target] : '';
+    await sendPush(u, replyPushPayload(text));
+  }
 }
 
 /**

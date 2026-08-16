@@ -43,6 +43,10 @@ test('extractGrokCopy falls back to envelope.text then raw JSON', () => {
   );
 });
 
+test('default SuperGrok model is grok-4.6', () => {
+  assert.equal(GROK_MODEL, 'grok-4.6');
+});
+
 test('modelFor maps backends', () => {
   assert.equal(modelFor('grok-cli'), GROK_MODEL);
   assert.equal(modelFor('cli'), 'sonnet');

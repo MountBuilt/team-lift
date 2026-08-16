@@ -28,23 +28,41 @@ export function chartEmptyHtml(kind) {
       LOG IT</button>`;
 }
 
-function dotsRow(days) {
+// Previous paint's fill state. A newly filled day pops even on snapshot
+// re-renders (entrance .fx-on only runs on tab visit).
+const lastDotState = new Map();
+
+function dotMark(day) {
+  const workout = day.parts.length > 0;
+  const snack = day.challenge === true;
+  if (workout && snack) return 'both';
+  if (workout) return 'workout';
+  if (snack) return 'snack';
+  return 'empty';
+}
+
+function dotsRow(days, userId) {
+  const nextStates = [];
   const dot = (day, j) => {
-    const workout = day.parts.length > 0;
-    const snack = day.challenge === true;
-    if (!workout && !snack) {
-      return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full bg-edge" style="--fx-j:${j}"></span>`;
+    const mark = dotMark(day);
+    const key = `${userId}|${day.date}`;
+    const live = lastDotState.get(key) === 'empty' && mark !== 'empty' ? ' fx-dot-live' : '';
+    nextStates.push([key, mark]);
+    if (mark === 'empty') {
+      return `<span class="fx-dot${live} inline-block h-3.5 w-3.5 rounded-full bg-edge" style="--fx-j:${j}"></span>`;
     }
     const bits = [];
-    if (workout) bits.push(day.parts.join(' + '));
-    if (snack) bits.push('snack');
+    if (day.parts.length) bits.push(day.parts.join(' + '));
+    if (day.challenge) bits.push('snack');
     const label = esc(bits.join(' · '));
-    const fill = workout ? 'bg-accent' : 'bg-card';
-    const ring = snack ? 'dot-snack' : '';
-    return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full cursor-pointer
+    const fill = day.parts.length ? 'bg-accent' : 'bg-card';
+    const ring = day.challenge ? 'dot-snack' : '';
+    return `<span class="fx-dot${live} inline-block h-3.5 w-3.5 rounded-full cursor-pointer
       ${fill} ${ring}" style="--fx-j:${j}" data-parts="${label}" aria-label="${label}"></span>`;
   };
-  return `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
+  const html = `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
+  for (const [key, mark] of nextStates) lastDotState.set(key, mark);
+  return html;
 }
 
 export function workoutsPanel(state, monday) {
@@ -55,7 +73,7 @@ export function workoutsPanel(state, monday) {
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
           ${streak >= 2 ? '<span class="flame" title="' + streak + '-week streak">🔥</span>' : ''}</span>
-        ${dotsRow(days)}
+        ${dotsRow(days, u.id)}
       </div>`;
   }).join('');
   return `

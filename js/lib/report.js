@@ -130,6 +130,13 @@ function hash(s) {
   return h;
 }
 
+/** True when today's morning report exists and this device has not opened Coach chat since. */
+export function reportIsUnseen(reportDay, seenDay, today) {
+  return Boolean(reportDay) && reportDay === today && seenDay !== today;
+}
+
+export const SEEN_REPORT_KEY = 'teamlift_seen_report';
+
 /** The report is usable if it was written for today or yesterday. */
 export function reportFresh(report, todayStr) {
   return Boolean(report?.text) && Boolean(report?.day) &&

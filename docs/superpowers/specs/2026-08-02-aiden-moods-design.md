@@ -24,10 +24,13 @@ Aiden speaks under a log when a human speaks first. Nowhere else.
 
 ## 2. Moods
 
-`MOODS` in `scripts/lib/context.mjs`. Ten of them, one picked per tick by
-`moodFor(seed)` where the orchestrator passes `seed = floor(now / 60000)`, so
-the mood turns over on every tick and a thread that runs all evening does not
-get ten replies in the same register.
+`MOODS` in `scripts/lib/context.mjs`. Ten of them.
+
+**2026-08-16:** mood is event-sticky, not clock-rotated. `resolveMood` picks
+from the event that woke him (report data, a new log, a new thread, a delete,
+a push wave) and persists `{ name, targets, trigger }` on `config/banter.mood`.
+More comments on the same thread keep that mood (`sticky: true`). The old
+`seed = floor(now / 60000)` rotation is retired.
 
 Four are deliberately not nice: `combative` (argue, do not concede), `sulking`
 (passive aggressive and a bit pathetic), `unhinged` (go somewhere nobody

@@ -43,6 +43,9 @@ export function probeWork({ banter, pushState, now, today }) {
   const morningDue = morningUnsent && t >= MORNING_AFTER && t < MORNING_CUTOFF;
   const skipMorning = morningUnsent && t >= MORNING_CUTOFF;
   const eveningDue = eveningUnsent && t >= EVENING_AFTER;
+  const reportReady = (banter?.reportDay === today) && Boolean(banter?.report?.text);
+  const reportUnsent = (pushState?.lastReport ?? '') !== today;
+  const reportPushDue = reportReady && reportUnsent && t >= MORNING_AFTER && t < MORNING_CUTOFF;
 
   return {
     wantReport,
@@ -53,7 +56,9 @@ export function probeWork({ banter, pushState, now, today }) {
     morningDue,
     eveningDue,
     skipMorning,
-    needsFullFetch: wantReport || wantWeekly || threadsPossible || morningDue || eveningDue || skipMorning
+    reportPushDue,
+    needsFullFetch: wantReport || wantWeekly || threadsPossible || morningDue || eveningDue
+      || skipMorning || reportPushDue
   };
 }
 

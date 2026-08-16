@@ -12,6 +12,10 @@ import { threadBlockHtml, bindThreads } from './thread.js';
  * Tap the parent text to open the thread. Comment count only shows once a
  * chat has started.
  */
+// Last painted kind per entry: 'fact' | 'ai'. A single factual→AI swap
+// plays .feed-line-arrive. A hydrate of many lines at once does not.
+const feedLineKind = new Map();
+
 export function renderFeed(container, entries, users = [], banter = null) {
   const groups = groupFeedByDay(entries, todayStr(), 12);
   if (groups.length === 0) {
@@ -34,10 +38,12 @@ export function renderFeed(container, entries, users = [], banter = null) {
       : '';
     const line = displayFeedLine(e, banter);
     const isAi = Boolean(banter?.feedLines?.[e.id]?.text?.trim?.());
-    // Name + banter on one line (no separate name row / no italics).
+    const kind = isAi ? 'ai' : 'fact';
+    const swapped = kind === 'ai' && feedLineKind.get(e.id) === 'fact';
+    feedLineKind.set(e.id, kind);
     const parentHtml =
       `<span class="font-bold" style="color:${color}">${esc(e.name)}</span>${badge} ` +
-      `<span class="feed-line-text${isAi ? '' : ' text-neutral-400'}">${esc(line)}</span>`;
+      `<span class="feed-line-text${isAi ? '' : ' text-neutral-400'}${swapped ? ' feed-swap-candidate' : ''}">${esc(line)}</span>`;
     const banterParent = threadBlockHtml(e.id, parentHtml, banter, { parentClass: 'feed-parent' });
     return `
       <div class="flex items-start gap-3 py-2.5 border-b border-edge/60 last:border-0">
@@ -54,4 +60,9 @@ export function renderFeed(container, entries, users = [], banter = null) {
       ${g.items.map(row).join('')}
     </div>`).join('');
   bindThreads(container, banter);
+  const swaps = container.querySelectorAll('.feed-swap-candidate');
+  if (swaps.length > 0 && swaps.length <= 2) {
+    for (const el of swaps) el.classList.add('feed-line-arrive');
+  }
+  for (const el of swaps) el.classList.remove('feed-swap-candidate');
 }

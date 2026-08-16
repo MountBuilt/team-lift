@@ -94,6 +94,38 @@ test('the report is not rewritten once it is written for today', () => {
   assert.equal(p.wantReport, false);
 });
 
+test('a written report wakes the tick after 07:30 until lastReport is stamped', () => {
+  const now = at(8, 0);
+  const base = settled(now);
+  const p = probeWork({
+    ...base,
+    banter: { ...base.banter, report: { day: TODAY, text: 'Morning boys.' } },
+    pushState: { lastMorning: TODAY, lastEvening: TODAY },
+    now,
+    today: TODAY
+  });
+  assert.equal(p.reportPushDue, true);
+  assert.equal(p.needsFullFetch, true);
+
+  const sent = probeWork({
+    ...base,
+    banter: { ...base.banter, report: { day: TODAY, text: 'Morning boys.' } },
+    pushState: { lastMorning: TODAY, lastEvening: TODAY, lastReport: TODAY },
+    now,
+    today: TODAY
+  });
+  assert.equal(sent.reportPushDue, false);
+
+  const tooEarly = probeWork({
+    ...base,
+    banter: { ...base.banter, report: { day: TODAY, text: 'Morning boys.' } },
+    pushState: { lastMorning: TODAY, lastEvening: TODAY },
+    now: at(3, 10),
+    today: TODAY
+  });
+  assert.equal(tooEarly.reportPushDue, false);
+});
+
 test('a due push wakes the tick even with nothing else pending', () => {
   const now = at(8, 0);
   const base = settled(now);

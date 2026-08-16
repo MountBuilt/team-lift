@@ -6,9 +6,10 @@ Documentation=file:%h/team-lift/docs/ops-nuc.md
 # Safety net for clock-driven work (morning/evening push, daily/weekly report)
 # and any missed Firestore events. Live comments are woken by
 # teamlift-banter-watch.service via onSnapshot on config/banter.pendingAt.
-# 30s keeps free-tier probe reads modest (~5.8k doc reads/day for the 2-doc idle probe).
+# 2 min is enough for clock jobs (report / push windows) and missed events.
+# 30s plus a failed model call full-fetched the roster until Spark 429'd.
 OnBootSec=30
-OnUnitActiveSec=30
+OnUnitActiveSec=120
 AccuracySec=5
 Persistent=true
 Unit=teamlift-banter.service

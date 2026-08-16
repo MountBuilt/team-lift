@@ -2,7 +2,7 @@
 // Always-on NUC watcher: Firestore onSnapshot on config/banter wakes the tick
 // as soon as a client stamps pendingAt (comment / pokeAiden / writeBanterThread).
 //
-// Premium path: event-first replies. teamlift-banter.timer (30s) is the safety
+// Premium path: event-first replies. teamlift-banter.timer (2 min) is the safety
 // net for clock-driven work (report, morning/evening push) and missed events.
 //
 // FREE SPARK PLAN: do not poll. A realtime listener on one document costs:

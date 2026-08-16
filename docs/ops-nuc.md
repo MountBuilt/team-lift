@@ -8,7 +8,7 @@ Aiden (morning report + thread replies) and web push run on the NUC:
 | Path | Unit | Role |
 |---|---|---|
 | **Event (primary)** | `teamlift-banter-watch.service` | Firestore `onSnapshot` on `config/banter`; wakes when clients stamp `pendingAt` (comment / log poke) |
-| **Safety timer** | `teamlift-banter.timer` → `teamlift-banter.service` | Every **30s**; clock jobs (report, morning/evening push) + recovery if an event was missed |
+| **Safety timer** | `teamlift-banter.timer` → `teamlift-banter.service` | Every **2 min**; clock jobs (report, morning/evening push) + recovery if an event was missed |
 | **Tick body** | `scripts/refresh-banter.sh` → `orchestrator.mjs` | Single-flight lock so event + timer never double-send |
 
 Product UI still deploys via `git push` to `main` (GitHub Pages); the NUC only
@@ -26,7 +26,10 @@ Stay within **50k document reads / day**:
   attach** and **1 read per change** to that document — **not** a poll loop.
   Aiden’s own writes also deliver a snapshot; the watcher only spawns a tick
   when `pendingAt` advances (or once at startup).
-- **Safety timer idle probe:** 2 REST reads every 30s ≈ **5.8k reads/day**.
+- **Safety timer idle probe:** 2 REST reads every 2 min ≈ **1.4k reads/day**.
+  A 429 or Grok 402 writes `~/.local/state/teamlift/backoff_until` and the
+  wrapper exits idle until that timestamp (do not delete it to "force" a
+  retry while Spark is still exhausted).
 - **Full ticks** (users + entries collections) only when there is work.
 
 Do **not** replace the listener with a tight REST poll of `pendingAt`.
@@ -123,7 +126,7 @@ Unit templates live in the repo:
 
 - `scripts/teamlift-banter-watch.service` — always-on Firestore listener
 - `scripts/teamlift-banter.service` — oneshot tick
-- `scripts/teamlift-banter.timer` — every 30s safety net
+- `scripts/teamlift-banter.timer` — every 2 min safety net
 
 They assume the clone is **`~/team-lift`**. Edit paths if your clone differs.
 
@@ -255,4 +258,5 @@ reference** only. Do not re-enable it on the Mac while the NUC is active.
 | `no copy backend` | `grok` + `~/.grok/auth.json`; never set metered `XAI_API_KEY` for production ticks |
 | VAPID / push fails | Same private key as the public key in the app; `~/.config/teamlift/vapid-private.key` |
 | Units dead after reboot | `sudo loginctl enable-linger $USER` |
-| Firestore quota fear | Confirm no custom poll loop; watcher is one doc listen + 30s 2-doc probe only |
+| Firestore quota fear | Confirm no custom poll loop; watcher is one doc listen + 2 min 2-doc probe only. If `banter.log` is full of HTTP 429, stop the timer and wait for midnight Pacific. |
+| Aiden silent after a comment | Watcher up? Then `tail` the log. 429 = Spark exhausted. 402 = Grok balance. Copy rejected = line too long. |

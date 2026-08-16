@@ -3,7 +3,7 @@
 // Production (NUC):
 //   - Event wake: teamlift-banter-watch.service (Firestore onSnapshot on
 //     config/banter.pendingAt) for near-live thread replies.
-//   - Safety timer: teamlift-banter.timer every 30s for clock jobs + recovery.
+//   - Safety timer: teamlift-banter.timer every 2 min for clock jobs + recovery.
 // Mac launchd (com.teamlift.banter) is deprecated reference only — see
 // docs/ops-nuc.md. This script owns every fetch, write and send;
 // scripts/lib/copywriter.mjs owns the model call.
@@ -38,6 +38,7 @@ import { probeWork, decidePushWork } from './lib/decide.mjs';
 import { buildContext, validateCopy } from './lib/context.mjs';
 import { generateCopy, backendName, modelFor } from './lib/copywriter.mjs';
 import { todayStr } from '../js/lib/dates.js';
+import { exitCodeForError } from './lib/tick-exit.mjs';
 import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
   applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET,
@@ -394,4 +395,7 @@ async function dropLegacyFields(doc) {
   await patch('config/banter', {}, present);
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch(err => {
+  console.error(err);
+  process.exit(exitCodeForError(err));
+});

@@ -45,11 +45,13 @@ when orchestrator/watcher code changed.
   on the NUC** — `ssh teamlift-nuc 'cd ~/team-lift && git pull --ff-only'`
 - Firestore rules deploy: `firebase deploy --only firestore:rules`
 - Tick (report + replies + pushes): **production** is the NUC systemd timer
-  (`teamlift-banter.timer`, every 60s). Hand/dry-run from any machine:
+  (`teamlift-banter.timer`, every 2 min). Hand/dry-run from any machine:
   `bash scripts/refresh-banter.sh` (wrapper for `node scripts/orchestrator.mjs`;
   supports `--dry-run` and `--send-test <userId>`; logs to
-  `~/.local/state/teamlift/banter.log`; silent for idle ticks). Install /
-  cutover: `docs/ops-nuc.md`
+  `~/.local/state/teamlift/banter.log`; silent for idle ticks). A 429 or
+  Grok 402 writes `~/.local/state/teamlift/backoff_until` so the timer
+  does not full-fetch the roster every interval. Install / cutover:
+  `docs/ops-nuc.md`
 - Tailwind rebuild (needed whenever HTML/JS gains a utility class not already
   in use): `npx tailwindcss@3.4.17 -i css/tailwind.source.css -o css/tailwind.css --minify`
 
@@ -163,13 +165,14 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   freshly re-read doc. Whole-map writes were destroying comments posted while
   the model was thinking. And `lastAidenAt` is stamped with the **pre-call**
   time so a mid-call comment stays pending.
-- **The tick is event-first + a 30s safety probe.** Clients stamp
+- **The tick is event-first + a 2 min safety probe.** Clients stamp
   `config/banter.pendingAt` (`pokeAiden()`); the NUC `teamlift-banter-watch`
   service listens with Firestore `onSnapshot` and runs the tick immediately.
-  `teamlift-banter.timer` every 30s covers clock jobs (report/push) and missed
+  `teamlift-banter.timer` every 2 min covers clock jobs (report/push) and missed
   events. `probeWork()` still reads two config docs and exits if idle — stay on
   Spark free tier (no polling loops). Don't add per-tick work that needs a full
-  fetch on every safety tick.
+  fetch on every safety tick. Failed ticks (Firestore 429, Grok 402) write a
+  local backoff file so they cannot full-fetch the roster in a loop.
 - **Aiden-is-typing dots.** `aidenThinkingState()` drives a 3-dot indicator in
   the thread while a comment waits on a reply, so the crew waits instead of
   assuming they were ignored. It gives up after `THINKING_WINDOW_MINUTES` so a

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Team Lift tick. Production host is the NUC:
 #   - teamlift-banter-watch.service  event wake (Firestore onSnapshot on pendingAt)
-#   - teamlift-banter.timer          30s safety net (clock jobs + missed events)
+#   - teamlift-banter.timer          2 min safety net (clock jobs + missed events)
 # Mac launchd (com.teamlift.banter) is deprecated — keep it unloaded.
 # Thin wrapper: all logic lives in scripts/orchestrator.mjs.
 #
@@ -30,6 +30,7 @@ STATE="$HOME/.local/state/teamlift"
 LOG="$STATE/banter.log"
 LOCK_FILE="$STATE/tick.lock"
 RERUN_FILE="$STATE/tick.rerun"
+BACKOFF_FILE="$STATE/backoff_until"
 API_KEY_FILE="$HOME/.config/teamlift/anthropic-key"
 TOKEN_FILE="$HOME/.config/teamlift/claude-token"
 GROK_AUTH="$HOME/.grok/auth.json"
@@ -37,6 +38,35 @@ WAKE="${TEAM_LIFT_WAKE:-manual}"
 
 mkdir -p "$STATE"
 touch "$LOG"
+
+# Local backoff after 429/402. A failed model call used to leave pendingAt
+# hot, so the safety timer full-fetched users+entries every 30s until Spark
+# quota died and Aiden went silent. This file is the circuit breaker that
+# works even when Firestore itself is 429.
+now_ts="$(date +%s)"
+if [ -f "$BACKOFF_FILE" ]; then
+  until_ts="$(tr -cd '0-9' < "$BACKOFF_FILE" 2>/dev/null || true)"
+  if [ -n "$until_ts" ] && [ "$now_ts" -lt "$until_ts" ]; then
+    echo "idle"
+    exit 0
+  fi
+  rm -f "$BACKOFF_FILE"
+fi
+
+apply_backoff() {
+  local code="$1"
+  local wait=0
+  if [ "$code" -eq 0 ]; then
+    rm -f "$BACKOFF_FILE"
+    return
+  fi
+  if [ "$code" -eq 2 ] || [ "$code" -eq 3 ]; then
+    wait=3600
+  else
+    wait=300
+  fi
+  echo $(( $(date +%s) + wait )) > "$BACKOFF_FILE"
+}
 
 # grok binary often lives in ~/.grok/bin; node may be in ~/.local/bin (Linux)
 # or homebrew (Mac). Prefer an already-active nvm node if present.
@@ -173,6 +203,11 @@ if command -v flock >/dev/null 2>&1; then
     rm -f "$RERUN_FILE"
     run_tick_body "$@"
     final=$?
+    apply_backoff "$final"
+    if [ "$final" -ne 0 ]; then
+      rm -f "$RERUN_FILE"
+      exit "$final"
+    fi
     if [ ! -f "$RERUN_FILE" ]; then
       exit "$final"
     fi
@@ -183,4 +218,6 @@ if command -v flock >/dev/null 2>&1; then
 fi
 
 run_tick_body "$@"
-exit $?
+code=$?
+apply_backoff "$code"
+exit "$code"

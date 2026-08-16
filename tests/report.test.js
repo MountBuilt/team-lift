@@ -61,7 +61,7 @@ test('yesterdaySummary never exposes an absolute weight', () => {
   assert.equal(json.includes('"weight"'), false);
 });
 
-test('templateReport is deterministic, mentions today\'s challenge, and stays clean', () => {
+test('templateReport is deterministic, mentions today\'s snack, and stays clean', () => {
   const ch = dailyChallenge(TODAY, '2026-07-13');
   const a = templateReport(entries, users, TODAY, ch);
   const b = templateReport(entries, users, TODAY, ch);
@@ -72,6 +72,14 @@ test('templateReport is deterministic, mentions today\'s challenge, and stays cl
   assert.equal(/—/.test(a), false, 'no em-dash');
   assert.equal(/\bgym\b/i.test(a), false, 'says workout, not gym');
   assert.equal(findAbsoluteWeight(a), null, 'no absolute weight');
+  assert.match(a, /week/i, 'Monday report covers the week that was');
+  assert.ok(!/\bchallenge\b/i.test(a), 'says snack, not challenge');
+});
+
+test('templateReport mid-week still covers yesterday', () => {
+  const ch = dailyChallenge('2026-07-21', '2026-07-13');
+  const text = templateReport(entries, users, '2026-07-21', ch);
+  assert.match(text, /yesterday/i);
 });
 
 test('templateReport rotates across days', () => {
@@ -97,12 +105,14 @@ test('reportFresh accepts today and yesterday, rejects older or missing', () => 
   assert.equal(reportFresh({ text: 'x' }, TODAY), false);
 });
 
-test('weeklyReportFresh accepts this week or last week only', () => {
-  // 2026-08-03 Mon; this week mon 2026-08-03, last 2026-07-27
-  assert.equal(weeklyReportFresh({ weekKey: '2026-08-03', text: 'hi' }, '2026-08-03'), true);
-  assert.equal(weeklyReportFresh({ weekKey: '2026-07-27', text: 'hi' }, '2026-08-03'), true);
-  assert.equal(weeklyReportFresh({ weekKey: '2026-07-20', text: 'hi' }, '2026-08-03'), false);
-  assert.equal(weeklyReportFresh(null, '2026-08-03'), false);
+test('weeklyReportFresh is true on the write day and the next day only', () => {
+  const weekly = { weekKey: '2026-08-10', day: '2026-08-16', text: 'hi' };
+  assert.equal(weeklyReportFresh(weekly, '2026-08-16'), true);
+  assert.equal(weeklyReportFresh(weekly, '2026-08-17'), true);
+  assert.equal(weeklyReportFresh(weekly, '2026-08-18'), false);
+  assert.equal(weeklyReportFresh(weekly, '2026-08-15'), false);
+  assert.equal(weeklyReportFresh({ day: '2026-08-16', text: '' }, '2026-08-16'), false);
+  assert.equal(weeklyReportFresh(null, '2026-08-16'), false);
 });
 
 test('templateWeeklyReport is non-empty and has no absolute kg or em-dash', () => {

@@ -50,7 +50,7 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
     if (typeof e.weight === 'number') bits.push(`${e.weight} kg`);
     if (typeof e.steps === 'number') bits.push(`${e.steps.toLocaleString()} steps`);
     if (e.workoutParts?.length) bits.push(esc(e.workoutParts.join(' + ')));
-    if (e.dailyChallenge === true) bits.push('challenge ✔');
+    if (e.dailyChallenge === true) bits.push('snack ✔');
     return `
       <button data-date="${esc(e.date)}" class="entry-row flex w-full items-baseline justify-between gap-3
         border-b border-edge/60 py-3 text-left last:border-0 active:bg-ink">
@@ -77,7 +77,7 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
           ${statTile(String(daysLogged), 'days logged')}
           ${statTile(compactNumber(stepsWeek), 'steps')}
           ${statTile(String(wkCount), 'workouts', { hot: hit })}
-          ${statTile(streak > 0 ? String(streak) : '—', streak >= 2 ? `🔥 streak` : 'challenge streak')}
+          ${statTile(streak > 0 ? String(streak) : '—', streak >= 2 ? `🔥 streak` : 'snack streak')}
         </div>
       </section>
       <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:2">

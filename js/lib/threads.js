@@ -47,15 +47,14 @@ export function needsDailyReport(reportDay, today, now) {
   return hhmm(now) >= DAILY_REPORT_AFTER;
 }
 
-/**
- * Sunday weekly recap due after 03:00 when we have not yet written for this
- * week's monday key. Self-heals if the host slept through Sunday morning.
- * weekdayIndex Sunday === 6 (Mon=0).
- */
-export function needsWeeklyReport(weeklyWeekKey, today, now) {
-  if (weekdayIndex(today) !== 6) return false;
-  if (hhmm(now) < DAILY_REPORT_AFTER) return false;
-  return weeklyWeekKey !== mondayOf(today);
+/** Standalone Sunday recap is gone. Monday's morning report covers last week. */
+export function needsWeeklyReport(_weeklyWeekKey, _today, _now) {
+  return false;
+}
+
+/** Previous Mon–Sun. Monday's report uses this, not the empty new week. */
+export function lastWeekStandings(entries, users, todayStr) {
+  return thisWeekStandings(entries, users, addDays(mondayOf(todayStr), -1));
 }
 
 /** Messages shown in the UI (soft-deleted hidden). */

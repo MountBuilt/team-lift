@@ -156,7 +156,7 @@ test('evening already sent today does nothing', () => {
   assert.deepEqual(w.evening, []);
 });
 
-test('weekly report wakes the probe on Sunday after 03:00', () => {
+test('standalone weekly recap no longer wakes the probe', () => {
   // 2026-08-02 Sunday
   const now = new Date(2026, 7, 2, 4, 0);
   const today = '2026-08-02';
@@ -170,8 +170,7 @@ test('weekly report wakes the probe on Sunday after 03:00', () => {
     now,
     today
   });
-  assert.equal(p.wantWeekly, true);
-  assert.equal(p.needsFullFetch, true);
+  assert.equal(p.wantWeekly, false);
 });
 
 test('weekly report does not fire mid-week', () => {

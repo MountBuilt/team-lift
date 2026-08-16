@@ -56,7 +56,7 @@ test('factualFeedLine is a plain inventory (no pep closers)', () => {
     workoutParts: ['legs', 'chest'], steps: 12345, weight: 90, dailyChallenge: true
   });
   const line = factualFeedLine(entry);
-  assert.equal(line, 'legs + chest · 12,345 steps · scales · challenge');
+  assert.equal(line, 'legs + chest · 12,345 steps · scales · snack');
   assert.ok(!/end of discussion|bookended|many courses/i.test(line));
   assert.equal(feedLine(entry), line);
 });
@@ -287,11 +287,11 @@ test('weightAxisBounds pads to 10 kg multiples with breathing room', () => {
 test('factualFeedLine covers challenge-only and multi-field days', () => {
   assert.equal(
     factualFeedLine(e('u1', '2026-07-10', { dailyChallenge: true })),
-    'challenge'
+    'snack'
   );
   assert.equal(
     factualFeedLine(e('u1', '2026-07-10', { workoutParts: ['legs'], dailyChallenge: true })),
-    'legs · challenge'
+    'legs · snack'
   );
 });
 

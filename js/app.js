@@ -4,7 +4,6 @@ import { renderGate } from './ui/gate.js';
 import { renderRoster } from './ui/roster.js';
 import { mountFab, openLogModal, setFabVisible } from './ui/logmodal.js';
 import { renderDashboard } from './ui/dashboard.js';
-import { renderStats } from './ui/stats.js';
 import { renderMe } from './ui/me.js';
 
 const app = document.getElementById('app');
@@ -24,6 +23,7 @@ function renderLoading() {
 function renderMain() {
   mountFab(() => openLogModal());
   setFabVisible(true);
+  if (state.tab === 'stats') state.tab = 'dash';
   const tab = state.tab || 'dash';
   const animate = tab !== lastShownTab;
   lastShownTab = tab;
@@ -36,9 +36,6 @@ function renderMain() {
       <button type="button" data-tab="dash" role="tab" aria-selected="${tab === 'dash'}"
         class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'dash' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">DASH</button>
-      <button type="button" data-tab="stats" role="tab" aria-selected="${tab === 'stats'}"
-        class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
-        ${tab === 'stats' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">STATS</button>
       <button type="button" data-tab="me" role="tab" aria-selected="${tab === 'me'}"
         class="tab flex-1 py-3.5 display text-[11px] tracking-[0.14em]
         ${tab === 'me' ? 'text-accent border-b-2 border-accent' : 'text-neutral-500'}">ME</button>
@@ -54,8 +51,6 @@ function renderMain() {
       onEdit: (date) => openLogModal(date),
       onLogout: () => { logout(); state.tab = 'dash'; lastShownTab = null; route(); }
     }, { animate });
-  } else if (tab === 'stats') {
-    renderStats(view, state, { animate });
   } else {
     renderDashboard(view, state, {
       animate,

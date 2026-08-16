@@ -39,9 +39,9 @@ that does not get a log, and makes the snack vanish once you have ticked it.
 | Tick label | **Rolling set** (smashed it, sorted, done, …), seeded by date. |
 | After tick | **Both cards collapse** and stay gone for that user for the rest of the day. |
 | Workouts card | Keep 7 dots. Drop `x/7` and last-week counts. Fill = workout, ring = snack. |
-| Recap visibility | **Written day + next calendar day** (Sunday + Monday). Gone Tuesday. |
-| Weight + steps | Two short trend cards on **one row**. No axis numbers. |
-| Dash order | Header, challenge pair (if open), workouts, coach, recap (if in window), trends, feed. |
+| Recap visibility | **No standalone card.** Monday's morning report covers last week. |
+| Weight + steps | **One card**, two graphs, one shared name legend. Smooth weight lines, no dots, no date axis. |
+| Dash order | Header, snack pair (if open), workouts, coach, trends, feed. |
 
 ## 1. Navigation
 
@@ -113,11 +113,10 @@ Two equal cards on one row.
 
 **Right: nudge**
 
-- Eyebrow: **Snack fact**.
-- Body: one short line from `challengeNudge(dateStr, exerciseName)`.
-- Mix of (a) a health fact about today's move and (b) a short
-  encouragement. Prefer a fact tagged to that exercise when the pool
-  has one.
+- Eyebrow rotates with the line kind: **Fact**, **Fuel**, or **Push**.
+- Body from `challengeNudgeCard(dateStr, exerciseName)`.
+- Mix of a health fact, a fuel line, or a push that makes them want the
+  snack. Prefer a line tagged to that exercise when the pool has one.
 - Deterministic. No em-dashes. Encouraging, not filthy Aiden register.
   One or two short sentences, hard cap 120 characters.
 - Not a thread.
@@ -192,28 +191,20 @@ Need a pure helper so the UI does not invent the matrix. Extend
 return `{ date, parts, challenge }` per day. `challenge` is true when
 that user has `dailyChallenge: true` on that date.
 
-## 5. Week recap (48 hours)
+## 5. Week recap is Monday's report
 
-`config/banter.weeklyReport` and the Sunday 03:00 write are unchanged.
+No standalone weekly card. `needsWeeklyReport` is always false. The
+Sunday `weeklyReport` write is retired.
 
-Show the recap card when `weeklyReport` has text and
+Monday's morning `report` covers **last week** (Mon–Sun that just
+ended) via `context.lastWeek` and `context.reportKind === 'week'`.
+Tue–Sun reports stay yesterday-only (`reportKind: 'day'`).
 
-```
-weekly.day <= today <= addDays(weekly.day, 1)
-```
+Same-day grace still applies on Monday. Today's snack is still an
+invitation. Call it a snack in the copy.
 
-That is Sunday and Monday for a Sunday write. Hidden from Tuesday.
-
-If the host slept and the weekly lands on Monday, the window is Monday
-and Tuesday. Drive visibility from `weekly.day`, not from weekday.
-
-Sunday with no stored weekly yet: still show the template until the
-tick writes, same as today.
-
-Replace `weeklyReportFresh` (this-week-or-last-week) with this 2-day
-rule. Update `tests/report.test.js`. The thread at `weekly` is not
-purged early; it just has no card. Next Sunday still digests + wipes
-on rewrite.
+The leftover `weekly` thread has no home card. Treat comments there
+like the report thread if anyone still has it open.
 
 ## 6. Weight and steps
 
@@ -250,7 +241,7 @@ Pure helpers under `js/lib/` need `node --test` coverage:
   exercise-tagged fact when one exists.
 - `challengeTickLabel` is deterministic and only returns a pool member.
 - Week marks include `challenge` per day.
-- Recap visibility is true on `day` and `day+1`, false on `day+2`.
+- Monday `templateReport` recaps last week. Mid-week still says yesterday.
 
 ## Out of scope
 

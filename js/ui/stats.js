@@ -1,17 +1,23 @@
-// Stats tab: week tiles, workouts panel, weight + team steps charts.
-// Spec: docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md
+// Dash helpers: workouts panel + compact trend chart shells.
+// Spec: docs/superpowers/specs/2026-08-16-dash-home-design.md
 import {
-  teamTiles, workoutWeek, weeklyWorkoutCount, streakWeeks
+  weekMarks, streakWeeks
 } from '../lib/aggregate.js';
-import { todayStr, mondayOf, addDays } from '../lib/dates.js';
 import { esc, safeColor } from '../lib/esc.js';
-import { runCountUps, compactNumber } from './fx.js';
+import { toggleTrendVisible, trendNameOn } from '../lib/trend-filter.js';
 import { openLogModal } from './logmodal.js';
 
-const card = (inner, i, extra = '') =>
+// null = every name on. Survives snapshot re-renders of the dash.
+let trendVisibleIds = null;
+
+export function trendVisibleUserIds() {
+  return trendVisibleIds;
+}
+
+export const card = (inner, i, extra = '') =>
   `<section class="fx-card rounded-2xl bg-card border border-edge p-4 ${extra}" style="--fx-i:${i}">${inner}</section>`;
 
-function chartEmptyHtml(kind) {
+export function chartEmptyHtml(kind) {
   const copy = kind === 'weight'
     ? 'Nobody has hit the scales yet. Be the first trend, not a ghost.'
     : 'No steps on the board. Walk the dog, walk the block, then log it.';
@@ -22,59 +28,40 @@ function chartEmptyHtml(kind) {
       LOG IT</button>`;
 }
 
-function tilesHtml(t) {
-  const tile = (big, small, opts = {}) => `
-    <div class="flex-1 rounded-xl bg-ink border ${opts.hot ? 'border-green-400/40' : 'border-edge'} px-2 py-3 text-center">
-      <p class="display text-3xl ${opts.hot ? 'text-green-400' : ''}"
-        ${opts.count ? `data-countup="${opts.count}" data-fmt="${opts.fmt || 'plain'}"` : ''}>${big}</p>
-      <p class="mt-1 eyebrow">${small}</p>
-    </div>`;
-  const allHit = t.membersAt3 === t.totalMembers && t.totalMembers > 0;
-  return `<div class="flex gap-2">
-    ${tile(String(t.totalWorkouts), 'workouts<br>this wk', { count: t.totalWorkouts })}
-    ${tile(`${t.membersAt3}/${t.totalMembers}`, 'hit 3+<br>this wk', { count: 0, hot: allHit })}
-    ${tile(compactNumber(t.totalSteps), 'team steps<br>this wk', { count: t.totalSteps, fmt: 'compact' })}
-  </div>`;
-}
-
-function dotsRow(days, count) {
-  const hit = count >= 3;
+function dotsRow(days) {
   const dot = (day, j) => {
-    if (day.parts.length === 0) {
+    const workout = day.parts.length > 0;
+    const snack = day.challenge === true;
+    if (!workout && !snack) {
       return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full bg-edge" style="--fx-j:${j}"></span>`;
     }
-    const label = esc(day.parts.join(' + '));
+    const bits = [];
+    if (workout) bits.push(day.parts.join(' + '));
+    if (snack) bits.push('snack');
+    const label = esc(bits.join(' · '));
+    const fill = workout ? 'bg-accent' : 'bg-card';
+    const ring = snack ? 'dot-snack' : '';
     return `<span class="fx-dot inline-block h-3.5 w-3.5 rounded-full cursor-pointer
-      ${hit ? 'bg-green-400' : 'bg-accent'}" style="--fx-j:${j}" data-parts="${label}" aria-label="${label}"></span>`;
+      ${fill} ${ring}" style="--fx-j:${j}" data-parts="${label}" aria-label="${label}"></span>`;
   };
   return `<span class="flex gap-1.5">${days.map(dot).join('')}</span>`;
 }
 
-function workoutsPanel(state, monday) {
-  const lastMonday = addDays(monday, -7);
+export function workoutsPanel(state, monday) {
   const rows = state.users.map(u => {
-    const days = workoutWeek(state.entries, u.id, monday);
-    const count = weeklyWorkoutCount(state.entries, u.id, monday);
-    const lastCount = weeklyWorkoutCount(state.entries, u.id, lastMonday);
+    const days = weekMarks(state.entries, u.id, monday);
     const streak = streakWeeks(state.entries, u.id, monday);
     return `
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
           ${streak >= 2 ? '<span class="flame" title="' + streak + '-week streak">🔥</span>' : ''}</span>
-        ${dotsRow(days, count)}
-        <span class="w-16 text-right text-sm ${count >= 3 ? 'font-black text-green-400' : 'text-neutral-400'}">
-          ${count}/7 <span class="text-neutral-600 text-xs">(${lastCount})</span></span>
+        ${dotsRow(days)}
       </div>`;
   }).join('');
-  const allHit = state.users.length > 0 &&
-    state.users.every(u => weeklyWorkoutCount(state.entries, u.id, monday) >= 3);
   return `
-    ${allHit ? `<p class="team-hit mb-2 rounded-xl border border-green-400/30
-      px-3 py-2 text-center display text-base tracking-wide text-green-400">
-      💪 WHOLE TEAM AT 3+ THIS WEEK</p>` : ''}
     <div class="mb-1 flex items-center justify-between">
       <h3 class="eyebrow">Workouts this week</h3>
-      <span class="text-xs text-neutral-500">last wk in ( )</span>
+      <span class="text-xs text-neutral-500">fill workout · ring snack</span>
     </div>
     ${rows || '<p class="text-neutral-500 text-sm">No members yet.</p>'}
     <div id="workout-tooltip" role="tooltip"
@@ -99,7 +86,7 @@ function bindGlobalWorkoutTooltipDismissal() {
   window.addEventListener('scroll', hideActiveWorkoutTooltip, true);
 }
 
-function initWorkoutTooltip(cardEl) {
+export function initWorkoutTooltip(cardEl) {
   const tip = cardEl.querySelector('#workout-tooltip');
   if (!tip) return;
 
@@ -145,29 +132,60 @@ function initWorkoutTooltip(cardEl) {
   bindGlobalWorkoutTooltipDismissal();
 }
 
-export function renderStats(container, state, { animate = false } = {}) {
-  const today = todayStr();
-  const monday = mondayOf(today);
-  let fx = 0;
-  const nextFx = () => fx++;
+function trendLegend(users) {
+  if (!users.length) return '';
+  return `<div id="trend-legend" class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+    ${users.map(u => {
+      const on = trendNameOn(trendVisibleIds, u.id);
+      return `<button type="button" data-user-id="${esc(u.id)}"
+        class="trend-name inline-flex items-center gap-1.5 text-[11px] font-bold ${on ? 'text-neutral-300' : 'trend-name-off'}"
+        aria-pressed="${on ? 'true' : 'false'}">
+        <span class="inline-block h-2 w-2 rounded-full" style="background:${safeColor(u.color)}"></span>
+        ${esc(u.name)}
+      </button>`;
+    }).join('')}
+  </div>`;
+}
 
-  container.innerHTML = `
-    <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pt-5 safe-bottom">
-      ${card(tilesHtml(teamTiles(state.entries, state.users, monday)), nextFx())}
-      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
-        ${workoutsPanel(state, monday)}
-      </section>
-      ${card(`<h3 class="mb-2 eyebrow">Weight (kg)</h3>
-        <div class="relative h-56"><canvas id="weight-chart"></canvas></div>
-        <div id="weight-empty" class="hidden mt-2">${chartEmptyHtml('weight')}</div>`, nextFx())}
-      ${card(`<h3 class="mb-2 eyebrow">Team steps · daily</h3>
-        <div class="relative h-56"><canvas id="steps-chart"></canvas></div>
-        <div id="steps-empty" class="hidden mt-2">${chartEmptyHtml('steps')}</div>`, nextFx())}
-    </div>`;
+export function bindTrendLegend(container, state) {
+  const root = container.querySelector('#trend-legend');
+  if (!root) return;
+  root.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-user-id]');
+    if (!btn) return;
+    const allIds = state.users.map(u => u.id);
+    trendVisibleIds = toggleTrendVisible(trendVisibleIds, btn.dataset.userId, allIds);
+    for (const el of root.querySelectorAll('[data-user-id]')) {
+      const on = trendNameOn(trendVisibleIds, el.dataset.userId);
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+      el.classList.toggle('trend-name-off', !on);
+      el.classList.toggle('text-neutral-300', on);
+    }
+    import('../charts.js').then(m => m.drawCharts(state, {
+      animate: false, visibleUserIds: trendVisibleIds
+    })).catch(() => {});
+  });
+}
 
-  initWorkoutTooltip(container.querySelector('#workouts-card'));
-  if (animate) runCountUps(container);
+export function trendCardsHtml(state, fxI) {
+  return card(`
+    <div class="flex gap-3">
+      <div class="min-w-0 flex-1">
+        <h3 class="eyebrow leading-none">Weight</h3>
+        <div class="relative chart-short mt-1"><canvas id="weight-chart"></canvas></div>
+        <div id="weight-empty" class="hidden mt-1">${chartEmptyHtml('weight')}</div>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h3 class="eyebrow leading-none">Steps</h3>
+        <div class="relative chart-short mt-1"><canvas id="steps-chart"></canvas></div>
+        <div id="steps-empty" class="hidden mt-1">${chartEmptyHtml('steps')}</div>
+      </div>
+    </div>
+    ${trendLegend(state.users)}
+  `, fxI);
+}
+
+export function bindChartEmpties(container) {
   container.querySelectorAll('[data-log-empty]').forEach(btn =>
     btn.addEventListener('click', () => openLogModal()));
-  import('../charts.js').then(m => m.drawCharts(state, { animate })).catch(() => {});
 }

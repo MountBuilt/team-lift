@@ -371,7 +371,7 @@ export function factualFeedLine(entry) {
   if (parts.length > 0) bits.push(parts.join(' + '));
   if (typeof entry?.steps === 'number') bits.push(`${fmtSteps(entry.steps)} steps`);
   if (typeof entry?.weight === 'number') bits.push('scales');
-  if (entry?.dailyChallenge === true) bits.push('challenge');
+  if (entry?.dailyChallenge === true) bits.push('snack');
   return bits.join(' · ') || 'logged something';
 }
 

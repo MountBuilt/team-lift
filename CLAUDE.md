@@ -71,9 +71,10 @@ when orchestrator/watcher code changed.
 - Peer reactions live on `entries/{id}.reactions` as `{ [userId]: emoji }`
   (fixed set 🔥💀👏😂), written with FieldPath per user. Client-only; no tick
   involvement. Weekly awards are pure client functions over Mon–Sun.
-- Sunday weekly recap: `config/banter.weeklyReport` + thread target `weekly`,
-  same one-call-per-tick as the morning report. Spec:
-  `docs/superpowers/specs/2026-08-03-weekly-recap-design.md`.
+- No standalone weekly recap card. Monday's morning report covers last week
+  (`reportKind: 'week'`, `lastWeek` standings). Tue–Sun reports stay yesterday
+  only. `needsWeeklyReport` is always false. Spec:
+  `docs/superpowers/specs/2026-08-16-dash-home-design.md`.
 - **Never publish an absolute weight in kg.** Deltas and trends only, in the
   charts and in the banter. The copywriter context carries `weightDelta` and
   never a raw weight, so the model cannot leak one; `findAbsoluteWeight()` in
@@ -87,12 +88,13 @@ when orchestrator/watcher code changed.
   no-scales material a week after both had stopped being funny. Same-day grace:
   nobody is roasted for not-yet-logging today, and 1-2 empty days = rest
   (`REST_GRACE_DAYS`), 3+ = fair game.
-- Daily challenge (`js/lib/challenge.js`): one bodyweight exercise per day,
-  a pure function of the date (no backend state), reps ramp weekly from the
-  challenge start. Ticking it writes `dailyChallenge: true` on that day's
-  entry doc; streaks are consecutive ticked days.
-- Team weight chart plots actual kg but keeps exact values obscured: coarse
-  10 kg y-axis ticks, tooltips show change vs first weigh-in (never absolute kg).
+- Daily snack (`js/lib/challenge.js`): one bodyweight snack per day, a
+  pure function of the date (no backend state). Reps sit in a snack band
+  and can go down or up day to day. Ticking it writes `dailyChallenge: true`
+  on that day's entry doc; streaks are consecutive ticked days. UI and
+  Aiden copy say **snack**, never challenge, for this daily exercise.
+- Team weight chart plots actual kg but keeps exact values obscured: no
+  y-axis numbers, tooltips show change vs first weigh-in (never absolute kg).
 - Log sheet day picker: `dayOptions()` in `js/lib/dates.js` offers today,
   yesterday and the day before, collapsed to the selected day until tapped.
   There is no calendar input; nobody backfills further than two days.
@@ -107,9 +109,11 @@ when orchestrator/watcher code changed.
 Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
 (plus 2026-07-26 for tick shape and 2026-08-02 moods).
 
-- **Tabs:** Dashboard (status, challenge, Coach chat, weekly, podium, feed)
-  | **Stats** (week tiles, workouts panel, weight + steps charts) | Me.
-  No LOG SOMETHING nudge card; (+) FAB is the log entry.
+- **Tabs:** Dashboard (header, snack pair until ticked, workouts, Coach chat,
+  merged weight + steps card, feed) | Me.
+  No Stats tab, today-board, podium, or score tiles. No LOG SOMETHING nudge;
+  (+) FAB is the log entry. Spec:
+  `docs/superpowers/specs/2026-08-16-dash-home-design.md`.
   Sticky top nav uses `.safe-top` (`env(safe-area-inset-top)`) so PWA tabs
   stay tappable under the notch (`black-translucent` + `viewport-fit=cover`).
 - **Recent activity is AI.** Client shows `factualFeedLine(entry)` until the

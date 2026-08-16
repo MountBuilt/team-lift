@@ -14,7 +14,7 @@ import { addDays, mondayOf, dayLabel } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
 import { challengeStreak } from './challenge.js';
 import { pickFrom, stepsComment, workoutsComment, weightComment } from './banter.js';
-import { thisWeekStandings } from './threads.js';
+import { lastWeekStandings } from './threads.js';
 
 /** Signed change vs the most recent weigh-in strictly before `dateStr`, or null. */
 export function weightDelta(entries, userId, dateStr) {
@@ -94,6 +94,9 @@ const TURNOUT_LINES = {
  * template quips so the voice matches the AI report.
  */
 export function templateReport(entries, users, todayStr, challenge = null) {
+  if (todayStr === mondayOf(todayStr)) {
+    return templateWeekReport(entries, users, todayStr, challenge);
+  }
   const sum = yesterdaySummary(entries, users, todayStr);
   const monday = mondayOf(todayStr);
   const seed = `report|${sum.date}`;
@@ -115,8 +118,8 @@ export function templateReport(entries, users, todayStr, challenge = null) {
 
   if (challenge) {
     parts.push(sum.challengeTicks > 0
-      ? `${sum.challengeTicks} of you ticked the challenge. Today it is ${challenge.reps} ${challenge.name}.`
-      : `Nobody ticked the challenge yesterday. ${challenge.reps} ${challenge.name} today, no excuses.`);
+      ? `${sum.challengeTicks} of you ticked the snack. Today it is ${challenge.reps} ${challenge.name}.`
+      : `Nobody ticked the snack yesterday. ${challenge.reps} ${challenge.name} today, no excuses.`);
   }
   return parts.filter(Boolean).join(' ');
 }
@@ -134,57 +137,69 @@ export function reportFresh(report, todayStr) {
 }
 
 /**
- * Weekly recap is shown for the current week (weekKey === this monday) or
- * last week (weekKey === previous monday) so Mon–Sat still see Sunday's piece.
+ * Weekly recap card: write day plus the next calendar day.
+ * Sunday piece is gone on Tuesday. Late Monday write is gone Wednesday.
  */
 export function weeklyReportFresh(weekly, todayStr) {
-  if (!weekly?.text || !weekly?.weekKey) return false;
-  const mon = mondayOf(todayStr);
-  return weekly.weekKey === mon || weekly.weekKey === addDays(mon, -7);
+  if (!weekly?.text || !weekly?.day) return false;
+  return weekly.day <= todayStr && todayStr <= addDays(weekly.day, 1);
 }
 
 /**
  * Offline weekly recap when the AI weekly is missing. Week standings only,
  * never absolute kg. Same voice as the other template banter.
  */
-export function templateWeeklyReport(entries, users, todayStr) {
-  const monday = mondayOf(todayStr);
-  const seed = `weekly|${monday}`;
-  const week = thisWeekStandings(entries, users, todayStr);
+/** Offline Monday report: the week that just ended. */
+function templateWeekReport(entries, users, todayStr, challenge = null) {
+  const lastMonday = addDays(mondayOf(todayStr), -7);
+  const seed = `weekreport|${lastMonday}`;
+  const week = lastWeekStandings(entries, users, todayStr);
   const parts = [];
 
   const stepKing = [...week.members].sort((a, b) => b.steps - a.steps || a.name.localeCompare(b.name))[0];
   const workKing = [...week.members].sort((a, b) => b.workouts - a.workouts || a.name.localeCompare(b.name))[0];
-  const chalKing = [...week.members].sort((a, b) => b.challengeTicks - a.challengeTicks || a.name.localeCompare(b.name))[0];
+  const snackKing = [...week.members].sort((a, b) => b.challengeTicks - a.challengeTicks || a.name.localeCompare(b.name))[0];
 
   parts.push(pickFrom([
-    `Week of ${monday}: the board does not lie.`,
-    `Sunday check-in for the week starting ${monday}.`,
-    `Weekly wrap, boys. Mon through now on the table.`
+    `Week that was, boys. ${lastMonday} through Sunday on the table.`,
+    `Monday wrap for the week starting ${lastMonday}. The board does not lie.`,
+    `Last week is closed. Here is who showed up.`
   ], seed));
 
   if (workKing && workKing.workouts > 0) {
-    parts.push(`${workKing.name} leads workouts at ${workKing.workouts} days. The rest of you, notes.`);
+    parts.push(`${workKing.name} led workouts at ${workKing.workouts} days. The rest of you, notes.`);
   } else {
-    parts.push('Nobody has a real workout day on the board this week. Embarrassing.');
+    parts.push('Nobody had a real workout day on the board last week. Embarrassing.');
   }
 
   if (stepKing && stepKing.steps > 0) {
-    parts.push(`${stepKing.name} is carrying steps at ${stepKing.steps.toLocaleString('en-AU')}.`);
+    parts.push(`${stepKing.name} carried steps at ${stepKing.steps.toLocaleString('en-AU')}.`);
   }
 
-  if (chalKing && chalKing.challengeTicks > 0) {
-    parts.push(`Challenge iron man: ${chalKing.name} with ${chalKing.challengeTicks} ticks.`);
+  if (snackKing && snackKing.challengeTicks > 0) {
+    parts.push(`Snack king: ${snackKing.name} with ${snackKing.challengeTicks} ticks.`);
   }
 
-  const workLine = workoutsComment(entries, users, monday, seed + 'w', todayStr);
+  const workLine = workoutsComment(entries, users, lastMonday, seed + 'w', todayStr);
   if (workLine) parts.push(workLine);
 
+  if (challenge) {
+    parts.push(`Today's snack is ${challenge.reps} ${challenge.name}. New week, start it.`);
+  }
+
   parts.push(pickFrom([
-    'Finish the week like you mean it.',
-    'Still time to fix your standing before Monday. Or not. Your funeral.',
-    'One more session changes the story. Or it does not. Your call.'
+    'New week. Do not open it the way you closed the last one.',
+    'Monday. Put something on the board.',
+    'Last week is a story. This week is still blank. Fill it.'
   ], seed + 'x'));
 
   return parts.filter(Boolean).join(' ');
+}
+
+/**
+ * Offline weekly recap when the AI weekly is missing. Kept for tests and
+ * any leftover Sunday card. Week standings only, never absolute kg.
+ */
+export function templateWeeklyReport(entries, users, todayStr) {
+  return templateWeekReport(entries, users, todayStr === mondayOf(todayStr) ? todayStr : addDays(mondayOf(todayStr), 7));
 }

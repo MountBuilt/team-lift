@@ -15,7 +15,7 @@ import { addDays, mondayOf } from '../../js/lib/dates.js';
 import { restDayStatus, displayFeedLine, factualFeedLine, isBigEffort } from '../../js/lib/banter.js';
 import { yesterdaySummary, weightDelta } from '../../js/lib/report.js';
 import {
-  thisWeekStandings, AIDEN_MSG_MAX, FEED_LINE_MAX, REPORT_TARGET, WEEKLY_TARGET
+  thisWeekStandings, lastWeekStandings, AIDEN_MSG_MAX, FEED_LINE_MAX, REPORT_TARGET, WEEKLY_TARGET
 } from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
@@ -176,19 +176,21 @@ export function buildContext({
     // time (same-day grace). Do not name anyone as avoiding this exercise.
     challenge: {
       ...todayChallenge,
-      note: 'Invitation for everyone today. Nobody has done or skipped it yet. Never say a bloke avoided, skipped, or failed this challenge.'
+      note: 'Invitation for everyone today. Nobody has done or skipped it yet. Call it a snack. Never say a bloke avoided, skipped, or failed this snack.'
     },
-    // Completed-day challenge results. Roast skips only from skippedAmongLogged.
+    // Completed-day snack results. Roast skips only from skippedAmongLogged.
     challengeYesterday,
-    // The morning report may ONLY talk about this. It is a completed day, so
-    // roasting inactivity here is fair game (same-day grace does not apply).
+    reportKind: wantReport && today === mondayOf(today) ? 'week' : 'day',
+    // The morning report may ONLY talk about this on Tue-Sun. Monday uses lastWeek.
     yesterday: ySummary,
     thisWeek: thisWeekStandings(entries, users, today),
+    lastWeek: lastWeekStandings(entries, users, today),
     grace: {
       sameDay: 'Today is never a missed, lazy, skipped or rest day. The boys have until midnight to log. Only judge inactivity on completed days. The evening push is pure encouragement, never a roast for not logging today.',
       restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.',
-      challengeToday: 'context.challenge is TODAY only: name the exercise and reps as a pull for everyone. Never claim anyone avoided, skipped, dodged or failed it. A bloke who has not logged today is not avoiding the challenge; the day is not over.',
-      challengeYesterday: 'Only challengeYesterday.skippedAmongLogged may be roasted for skipping the challenge, and only for YESTERDAY\'s exercise/reps. Silent blokes (yesterday.silent) missed the whole day, not specifically the challenge. Do not mix today\'s exercise name with yesterday\'s skips.'
+      challengeToday: 'context.challenge is TODAY only: name the exercise and reps as a pull for everyone. Call it a snack, never a challenge. Never claim anyone avoided, skipped, dodged or failed it. A bloke who has not logged today is not avoiding the snack; the day is not over.',
+      challengeYesterday: 'Only challengeYesterday.skippedAmongLogged may be roasted for skipping the snack, and only for YESTERDAY\'s exercise/reps. Silent blokes (yesterday.silent) missed the whole day, not specifically the snack. Do not mix today\'s exercise name with yesterday\'s skips.',
+      mondayReport: 'On Monday, reportKind is week. Cover lastWeek (the week that was). Do not write a yesterday-only daily update.'
     },
     users: users.map(u => ({ id: u.id, name: u.name })),
     storylines: activeStorylines(STORYLINES, today)

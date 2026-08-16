@@ -1,34 +1,31 @@
 import { userHasLogged } from '../lib/aggregate.js';
-import { weeklyAwards, AWARD_LABELS } from '../lib/awards.js';
-import { dailyChallenge, challengeDoneOn, challengeStreak } from '../lib/challenge.js';
-import { todayStr, mondayOf, addDays, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import {
-  pickFrom, CHALLENGE_QUIPS, todayBoardMembers
-} from '../lib/banter.js';
+  dailyChallenge, challengeDoneOn, challengeStreak,
+  challengeNudgeCard, challengeTickLabel
+} from '../lib/challenge.js';
+import { todayStr, mondayOf, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
 import {
-  templateReport, reportFresh, templateWeeklyReport, weeklyReportFresh
+  templateReport, reportFresh
 } from '../lib/report.js';
 import {
-  REPORT_TARGET, WEEKLY_TARGET, reportPreviewMessages, latestReportBody,
+  REPORT_TARGET, reportPreviewMessages, latestReportBody,
   visibleMessages, clipCoachPreviewText
 } from '../lib/threads.js';
 import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
 import { pushSupported } from '../push.js';
 import { renderFeed } from './feed.js';
-import { esc, safeColor } from '../lib/esc.js';
-import { runCountUps, burstFrom, compactNumber } from './fx.js';
+import { esc } from '../lib/esc.js';
+import { runCountUps, burstFrom } from './fx.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
+import {
+  card, workoutsPanel, initWorkoutTooltip, trendCardsHtml, bindChartEmpties,
+  bindTrendLegend, trendVisibleUserIds
+} from './stats.js';
 
-// One-shot celebration: set when the user ticks the challenge, consumed by
-// the next render so the DONE stamp slams in exactly once.
-let celebratePending = false;
-
-const card = (inner, i, extra = '') =>
-  `<section class="fx-card rounded-2xl bg-card border border-edge p-4 ${extra}" style="--fx-i:${i}">${inner}</section>`;
-
-// Plain coach line (daily challenge quip — not threaded).
-const coach = (comment) => comment ? `<p class="coach">${esc(comment)}</p>` : '';
+// After a successful snack tick, keep the pair in the tree for one collapse
+// animation. Snapshot re-renders must not yank it mid-motion.
+let snackCollapseActive = false;
 
 /**
  * Coach chat home card: last 3 messages in the continuous report thread.
@@ -81,26 +78,6 @@ function reportCard(state, today) {
     })}`;
 }
 
-/** Sunday week recap (AI or template). Thread target `weekly`. */
-function weeklyCard(state, today) {
-  const stored = state.banter?.weeklyReport;
-  const mon = mondayOf(today);
-  const isSunday = today === addDays(mon, 6);
-  const fresh = weeklyReportFresh(stored, today);
-  // Fresh AI recap (this or last week), or Sunday template until the tick lands.
-  if (!fresh && !isSunday) return '';
-  const text = (fresh && stored?.text)
-    ? stored.text
-    : templateWeeklyReport(state.entries, state.users, today);
-  const label = (stored?.weekKey === mon || isSunday) ? 'This week' : 'Last week';
-  return `
-    <div class="flex items-center justify-between">
-      <h3 class="eyebrow">Aiden's week recap</h3>
-      <span class="eyebrow text-neutral-600">${esc(label)}</span>
-    </div>
-    ${threadBlockHtml(WEEKLY_TARGET, esc(text), state.banter, { parentClass: 'report-parent' })}`;
-}
-
 function headerHtml(c, today) {
   const wk = weekNumber(today, c.startDate);
   const total = totalWeeks(c.startDate, c.endDate);
@@ -121,46 +98,6 @@ function headerHtml(c, today) {
         <span>${inWindow ? `${totalDays - dayN} days left` : ''}</span>
       </div>
     </header>`;
-}
-
-// Who has logged something today (hasAnyLog). Quiet chips stay neutral —
-// same-day grace means no roast copy on the strip.
-function todayBoardHtml(state, today) {
-  const board = todayBoardMembers(state.users, state.entries, today);
-  if (board.length === 0) return '';
-  const nLogged = board.filter(m => m.logged).length;
-  const chips = board.map(m => {
-    const color = safeColor(m.color);
-    const initial = esc((m.name || '?').charAt(0).toUpperCase());
-    // Optional secondary: tiny marks for challenge / workout when already logged.
-    const marks = [];
-    if (m.challenge) marks.push('<span title="Challenge done">✓</span>');
-    if (m.workout) marks.push('<span title="Workout logged">W</span>');
-    const markHtml = marks.length
-      ? `<span class="mt-0.5 flex gap-0.5 text-[9px] font-black text-neutral-500">${marks.join('')}</span>`
-      : '';
-    return `
-      <div class="flex min-w-[2.75rem] flex-1 flex-col items-center gap-1" title="${esc(m.name)}">
-        <span class="relative flex h-10 w-10 items-center justify-center rounded-full display text-sm
-          ${m.logged ? 'ring-2 ring-green-400/70' : 'opacity-40 grayscale-[30%]'}"
-          style="background:${color}26;color:${color}"
-          aria-label="${esc(m.name)}: ${m.logged ? 'logged today' : 'not yet'}">
-          ${initial}
-          ${m.logged
-            ? '<span class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-green-400 ring-2 ring-card"></span>'
-            : ''}
-        </span>
-        <span class="max-w-[3.5rem] truncate text-[10px] font-bold
-          ${m.logged ? 'text-neutral-300' : 'text-neutral-600'}">${esc(m.name)}</span>
-        ${markHtml}
-      </div>`;
-  }).join('');
-  return `
-    <div class="mb-2 flex items-center justify-between">
-      <h3 class="eyebrow">Today on the board</h3>
-      <span class="text-[11px] font-bold text-neutral-500">${nLogged}/${board.length} logged</span>
-    </div>
-    <div class="flex flex-wrap gap-2">${chips}</div>`;
 }
 
 function isIosLike() {
@@ -205,76 +142,38 @@ function pushCoachHtml(state) {
     </div>`;
 }
 
-// Client-only podium for this Mon–Sun. Never shows absolute kg.
-function awardsHtml(state, monday) {
-  const awards = weeklyAwards(state.entries, state.users, monday);
-  const keys = ['steps', 'workouts', 'challenge', 'consistency'];
-  const any = keys.some(k => awards[k]);
-  if (!any) {
-    return `
-      <h3 class="eyebrow">This week's podium</h3>
-      <p class="mt-2 text-sm text-neutral-400">Nobody's on it yet. Log something and start climbing.</p>`;
-  }
-  const fmt = (key, w) => {
-    if (key === 'steps') return compactNumber(w.value);
-    return String(w.value);
-  };
-  const rows = keys.map(key => {
-    const w = awards[key];
-    if (!w) {
-      return `
-        <div class="flex items-center justify-between gap-2 py-2 border-b border-edge/50 last:border-0">
-          <span class="text-xs font-bold text-neutral-500">${esc(AWARD_LABELS[key])}</span>
-          <span class="text-xs text-neutral-600">—</span>
-        </div>`;
-    }
-    const color = safeColor(w.color);
-    return `
-      <div class="flex items-center justify-between gap-2 py-2 border-b border-edge/50 last:border-0">
-        <span class="text-xs font-bold text-neutral-500">${esc(AWARD_LABELS[key])}</span>
-        <span class="text-sm font-black truncate" style="color:${color}">
-          ${esc(w.name)} <span class="text-neutral-500 font-bold">· ${fmt(key, w)}</span>
-        </span>
-      </div>`;
-  }).join('');
-  return `
-    <h3 class="mb-1 eyebrow">This week's podium</h3>
-    ${rows}`;
+function reducedMotion() {
+  return typeof window !== 'undefined'
+    && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
 }
 
-// One bodyweight exercise a day, same for everyone, ramping weekly. Ticking
-// it writes dailyChallenge:true onto today's entry; streaks are consecutive
-// ticked days. Hidden once the challenge window has ended.
-function challengeCard(state, today) {
+// Two equal cards: snack + nudge. Hidden after this user ticks today.
+function snackPairHtml(state, today, fx) {
   const ch = dailyChallenge(today, state.challenge.startDate);
-  const doneIds = challengeDoneOn(state.entries, today);
   const me = state.currentUser;
-  const meDone = doneIds.includes(me.id);
-  const streakOf = (id) => challengeStreak(state.entries, id, today);
-  const myStreak = streakOf(me.id);
-  const stamp = celebratePending;
-  celebratePending = false;
+  const meDone = challengeDoneOn(state.entries, today).includes(me.id);
+  if (today > state.challenge.endDate) return '';
+  if (meDone && !snackCollapseActive) return '';
 
-  const doneChips = state.users
-    .filter(u => doneIds.includes(u.id))
-    .map(u => {
-      const s = streakOf(u.id);
-      return `<span class="font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}${s >= 2 ? ` <span class="flame">🔥</span>${s}` : ''}</span>`;
-    }).join('<span class="text-neutral-600"> · </span>');
-
-  return `
-    <div class="flex items-center justify-between">
-      <h3 class="eyebrow">Daily challenge</h3>
-      ${myStreak >= 2 ? `<span class="text-sm font-black text-accent"><span class="flame">🔥</span> ${myStreak}-day streak</span>` : ''}
-    </div>
-    <p class="mt-1 display text-4xl tracking-tight heat-text">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
-    ${coach(pickFrom(CHALLENGE_QUIPS, today))}
-    ${meDone
-      ? `<p class="${stamp ? 'stamp ' : ''}mt-3 rounded-xl bg-green-400/10 border border-green-400/30 py-3 text-center
-           display text-lg tracking-wide text-green-400">DONE TODAY 💪</p>`
-      : `<button id="challenge-done" class="pressable mt-3 w-full rounded-xl bg-accent py-3 display text-lg tracking-wide
-           text-black active:bg-accentDim">I'VE DONE IT ✔</button>`}
-    ${doneChips ? `<p class="mt-2 text-xs text-neutral-500">Done today: ${doneChips}</p>` : ''}`;
+  const myStreak = challengeStreak(state.entries, me.id, today);
+  const tick = challengeTickLabel(today);
+  const nudge = challengeNudgeCard(today, ch.name);
+  const collapsing = meDone && snackCollapseActive;
+  return `<div id="snack-pair" class="flex gap-2 items-stretch${collapsing ? ' snack-pair-collapse' : ''}">
+    ${card(`
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="eyebrow">Daily snack</h3>
+        ${myStreak >= 2 ? `<span class="text-xs font-black text-accent"><span class="flame">🔥</span> ${myStreak}</span>` : ''}
+      </div>
+      <p class="mt-1 display text-2xl tracking-tight heat-text leading-none">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
+      <button id="challenge-done" class="pressable mt-3 w-full rounded-xl bg-accent py-2.5 display text-base tracking-wide
+        text-black active:bg-accentDim">${esc(tick.toUpperCase())}</button>
+    `, fx, 'flex-1 min-w-0')}
+    ${card(`
+      <h3 class="eyebrow">${esc(nudge.eyebrow)}</h3>
+      <p class="mt-2 text-sm leading-snug text-neutral-300">${esc(nudge.text)}</p>
+    `, fx, 'flex-1 min-w-0')}
+  </div>`;
 }
 
 export function renderDashboard(container, state, {
@@ -288,25 +187,36 @@ export function renderDashboard(container, state, {
   let fx = 0;
   const nextFx = () => fx++;
 
-  // Status + Aiden + feed. Scoreboard charts/tiles live on the Stats tab.
   container.innerHTML = `
     <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pt-5 safe-bottom">
       ${headerHtml(c, today)}
-      ${card(todayBoardHtml(state, today), nextFx())}
       ${coach ? card(coach, nextFx(), 'push-coach-card border-edge') : ''}
-      ${today <= c.endDate ? card(challengeCard(state, today), nextFx()) : ''}
+      ${snackPairHtml(state, today, nextFx())}
+      <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">
+        ${workoutsPanel(state, monday)}
+      </section>
       ${card(reportCard(state, today), nextFx(), 'report-card')}
-      ${(() => {
-        const w = weeklyCard(state, today);
-        return w ? card(w, nextFx(), 'weekly-card') : '';
-      })()}
-      ${card(awardsHtml(state, monday), nextFx(), 'awards-card')}
+      ${trendCardsHtml(state, nextFx())}
       ${card(`<h3 class="mb-2 eyebrow">Recent activity</h3><div id="feed"></div>`, nextFx())}
     </div>`;
 
   renderFeed(container.querySelector('#feed'), state.entries, state.users, state.banter);
   bindThreads(container, state.banter);
+  initWorkoutTooltip(container.querySelector('#workouts-card'));
+  bindChartEmpties(container);
+  bindTrendLegend(container, state);
+  import('../charts.js').then(m => m.drawCharts(state, {
+    animate, visibleUserIds: trendVisibleUserIds()
+  })).catch(() => {});
   if (animate) runCountUps(container);
+
+  const pair = container.querySelector('#snack-pair');
+  if (pair?.classList.contains('snack-pair-collapse')) {
+    pair.addEventListener('animationend', () => {
+      snackCollapseActive = false;
+      pair.remove();
+    }, { once: true });
+  }
 
   container.querySelector('#push-coach-dismiss')?.addEventListener('click', () => {
     try { localStorage.setItem(PUSH_COACH_KEY, '1'); } catch { /* ignore */ }
@@ -316,22 +226,20 @@ export function renderDashboard(container, state, {
     if (typeof onGoMe === 'function') onGoMe();
   });
 
-  // Tick today's challenge: confetti fires immediately, then the Firestore
-  // snapshot re-render flips the card to the DONE stamp (instant with local
-  // persistence's latency compensation).
   container.querySelector('#challenge-done')?.addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
+    const label = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'SAVING…';
     burstFrom(btn);
-    celebratePending = true;
+    snackCollapseActive = !reducedMotion();
     try {
       await saveEntry(state.currentUser.id, state.currentUser.name, todayStr(), { dailyChallenge: true });
     } catch (err) {
       console.error(err);
-      celebratePending = false;
+      snackCollapseActive = false;
       btn.disabled = false;
-      btn.textContent = "I'VE DONE IT ✔";
+      btn.textContent = label;
     }
   });
 }

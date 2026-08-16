@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   needsDailyReport, needsWeeklyReport, visibleMessages, commentCount, thisWeekStandings,
+  lastWeekStandings,
   isCommentWorthy, aidenHasSpoken, pendingForThread, collectThreadJobs,
   digestCardThreads, wipeCardThreads, purgeStaleFeedThreads, applyThreadReplies,
   aidenThinkingState,
@@ -56,6 +57,13 @@ describe('thisWeekStandings', () => {
     assert.equal(hunt.workouts, 2);
     assert.equal(simon.workouts, 4);
     assert.notEqual(hunt.workouts, 3); // would be wrong if pre-week counted
+  });
+  it('lastWeekStandings on Monday is the week that just ended', () => {
+    const w = lastWeekStandings(entries, users, '2026-07-20');
+    assert.equal(w.monday, '2026-07-13');
+    assert.equal(w.end, '2026-07-19');
+    assert.equal(w.members.find(m => m.name === 'Simon').workouts, 4);
+    assert.equal(thisWeekStandings(entries, users, '2026-07-20').monday, '2026-07-20');
   });
 });
 
@@ -407,25 +415,11 @@ describe('visible comment count', () => {
 });
 
 describe('needsWeeklyReport', () => {
-  // 2026-08-02 is a Sunday
-  const sunday = '2026-08-02';
-  const monday = '2026-07-27';
-  it('false on non-Sunday', () => {
-    const now = new Date(2026, 6, 28, 10, 0); // Tue
-    assert.equal(needsWeeklyReport(null, '2026-07-28', now), false);
-  });
-  it('false before 03:00 on Sunday', () => {
-    const now = new Date(2026, 7, 2, 2, 30);
-    assert.equal(needsWeeklyReport(null, sunday, now), false);
-  });
-  it('true after 03:00 on Sunday when weekKey missing or stale', () => {
+  it('never fires: week recap is Monday\'s morning report', () => {
+    const sunday = '2026-08-02';
     const now = new Date(2026, 7, 2, 3, 10);
-    assert.equal(needsWeeklyReport(null, sunday, now), true);
-    assert.equal(needsWeeklyReport('2026-07-20', sunday, now), true);
-  });
-  it('false once written for this week', () => {
-    const now = new Date(2026, 7, 2, 12, 0);
-    assert.equal(needsWeeklyReport(monday, sunday, now), false);
+    assert.equal(needsWeeklyReport(null, sunday, now), false);
+    assert.equal(needsWeeklyReport(null, '2026-07-28', now), false);
   });
 });
 

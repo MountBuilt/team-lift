@@ -10,12 +10,19 @@ import { burstFrom } from './fx.js';
 export const STEP_PRESETS = [5000, 8000, 10000, 12000];
 
 export function mountFab(onClick) {
-  if (document.getElementById('fab')) return;
+  const existing = document.getElementById('fab');
+  if (existing) {
+    if (!existing.querySelector('.fab-plus')) {
+      existing.textContent = '';
+      existing.innerHTML = '<span class="fab-plus" aria-hidden="true"></span>';
+    }
+    return;
+  }
   const fab = document.createElement('button');
   fab.id = 'fab';
-  fab.textContent = '+';
-  fab.className = `fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full text-4xl
-    font-black text-black shadow-lg shadow-accent/40`;
+  fab.innerHTML = '<span class="fab-plus" aria-hidden="true"></span>';
+  fab.className = `fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full
+    shadow-lg shadow-accent/40`;
   fab.setAttribute('aria-label', 'Log an entry');
   fab.addEventListener('click', onClick);
   document.body.appendChild(fab);

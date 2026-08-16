@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
-  workoutWeek, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay,
+  workoutWeek, weekMarks, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay,
   lastWeight, daysLoggedThisWeek, weeklySteps, userHasLogged
 } from '../js/lib/aggregate.js';
 
@@ -137,6 +137,24 @@ test('workoutWeek merges parts from multiple entries on the same day, deduped an
   ];
   const week = workoutWeek(entries, 'u1', '2026-07-06');
   assert.deepEqual(week[1].parts, ['legs', 'core', 'arms']);
+});
+
+test('weekMarks flags dailyChallenge per day without inventing workouts', () => {
+  const entries = [
+    e('u1', '2026-07-06', { workoutParts: ['legs'], dailyChallenge: true }),
+    e('u1', '2026-07-07', { dailyChallenge: true }),
+    e('u1', '2026-07-08', { workoutParts: ['core'] }),
+    e('u2', '2026-07-06', { dailyChallenge: true })
+  ];
+  const week = weekMarks(entries, 'u1', '2026-07-06');
+  assert.equal(week.length, 7);
+  assert.equal(week[0].challenge, true);
+  assert.deepEqual(week[0].parts, ['legs']);
+  assert.equal(week[1].challenge, true);
+  assert.deepEqual(week[1].parts, []);
+  assert.equal(week[2].challenge, false);
+  assert.deepEqual(week[2].parts, ['core']);
+  assert.ok(week.slice(3).every(d => d.challenge === false));
 });
 
 test('workoutWeek ignores other users and out-of-range dates', () => {

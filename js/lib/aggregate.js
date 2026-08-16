@@ -90,6 +90,17 @@ export function workoutWeek(entries, userId, mondayStr) {
   return days;
 }
 
+/** Mon..Sun marks: workout parts plus whether the snack was ticked that day. */
+export function weekMarks(entries, userId, mondayStr) {
+  const days = workoutWeek(entries, userId, mondayStr).map(d => ({ ...d, challenge: false }));
+  const end = addDays(mondayStr, 6);
+  for (const e of entries || []) {
+    if (e.userId !== userId || e.date < mondayStr || e.date > end) continue;
+    if (e.dailyChallenge === true) days[weekdayIndex(e.date)].challenge = true;
+  }
+  return days;
+}
+
 export function workoutDots(entries, userId, mondayStr) {
   return workoutWeek(entries, userId, mondayStr).map(d => d.parts.length > 0);
 }

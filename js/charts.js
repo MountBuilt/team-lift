@@ -1,21 +1,27 @@
-import { weightSeries, stepsMatrix, chartWindow, weightAxisBounds } from './lib/aggregate.js';
+import { weightSeries, stepsMatrix, chartWindow } from './lib/aggregate.js';
+
+// Tight y-window so the small dash cards show shape, not a flat band.
+// No tick labels, so exact kg stays unreadable.
+function trendWeightBounds(kgValues) {
+  const lo = Math.min(...kgValues);
+  const hi = Math.max(...kgValues);
+  const pad = Math.max(1.5, (hi - lo) * 0.25);
+  return { min: lo - pad, max: hi + pad };
+}
 import { todayStr, formatShort, dateRange } from './lib/dates.js';
 
 let weightChart = null;
 let stepsChart = null;
 
 const GRID = 'rgba(255,255,255,0.06)';
-const TICK = '#737373';
 
 const baseOpts = {
   responsive: true,
   maintainAspectRatio: false,
   animation: false,
+  layout: { padding: 0 },
   plugins: {
-    legend: {
-      position: 'bottom',
-      labels: { color: '#a3a3a3', boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'circle' }
-    }
+    legend: { display: false }
   }
 };
 
@@ -28,26 +34,31 @@ const reducedMotion = () =>
 const entranceAnimation = (animate) =>
   animate && !reducedMotion() ? { duration: 800, easing: 'easeOutQuart' } : false;
 
-export function drawCharts(state, { animate = false } = {}) {
+export function drawCharts(state, { animate = false, visibleUserIds = null } = {}) {
   // Chart.js is loaded with `defer`; a cache-primed first render can beat it.
   // Wait for its script to land, then draw (the next render also redraws).
   if (typeof Chart === 'undefined') {
     document.querySelector('script[src*="chart.umd"]')
-      ?.addEventListener('load', () => drawCharts(state, { animate }), { once: true });
+      ?.addEventListener('load', () => drawCharts(state, { animate, visibleUserIds }), { once: true });
     return;
   }
-  drawWeight(state, animate);
-  drawSteps(state, animate);
+  drawWeight(state, animate, visibleUserIds);
+  drawSteps(state, animate, visibleUserIds);
 }
 
-function drawWeight(state, animate) {
+function isVisible(id, visibleUserIds) {
+  return visibleUserIds == null || visibleUserIds.includes(id);
+}
+
+function drawWeight(state, animate, visibleUserIds) {
   const canvas = document.getElementById('weight-chart');
   if (!canvas) return;
   weightChart?.destroy();
 
   const { start, end } = chartWindow(state.entries, state.challenge, todayStr());
   const dates = dateRange(start, end);
-  const series = weightSeries(state.entries, state.users, state.challenge);
+  const series = weightSeries(state.entries, state.users, state.challenge)
+    .filter(s => isVisible(s.userId, visibleUserIds));
 
   const empty = document.getElementById('weight-empty');
   canvas.parentElement.classList.toggle('hidden', series.length === 0);
@@ -70,10 +81,10 @@ function drawWeight(state, animate) {
           borderColor: s.color,
           backgroundColor: s.color,
           spanGaps: true,
-          borderWidth: 2.5,
-          pointRadius: 2,
-          pointHoverRadius: 5,
-          tension: 0.3
+          borderWidth: 2.2,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.4
         };
       })
     },
@@ -96,27 +107,25 @@ function drawWeight(state, animate) {
       scales: {
         x: {
           grid: { display: false },
-          ticks: {
-            color: TICK, maxTicksLimit: 6, maxRotation: 0,
-            callback: (v, i) => formatShort(dates[i]).slice(4) // "7 Jul"
-          }
+          ticks: { display: false }
         },
         y: {
-          ...weightAxisBounds(series.flatMap(s => s.points.map(p => p.kg))),
+          ...trendWeightBounds(series.flatMap(s => s.points.map(p => p.kg))),
           grid: { color: GRID },
-          ticks: { color: TICK, stepSize: 10, callback: (v) => `${v}` }
+          ticks: { display: false }
         }
       }
     }
   });
 }
 
-function drawSteps(state, animate) {
+function drawSteps(state, animate, visibleUserIds) {
   const canvas = document.getElementById('steps-chart');
   if (!canvas) return;
   stepsChart?.destroy();
 
   const m = stepsMatrix(state.entries, state.users, state.challenge, todayStr());
+  m.series = m.series.filter(s => isVisible(s.userId, visibleUserIds));
   const hasData = m.series.some(s => s.values.some(v => v != null));
 
   const empty = document.getElementById('steps-empty');
@@ -151,14 +160,11 @@ function drawSteps(state, animate) {
       scales: {
         x: {
           stacked: true, grid: { display: false },
-          ticks: {
-            color: TICK, maxTicksLimit: 6, maxRotation: 0,
-            callback: (v, i) => formatShort(m.dates[i]).slice(4)
-          }
+          ticks: { display: false }
         },
         y: {
           stacked: true, grid: { color: GRID },
-          ticks: { color: TICK, callback: (v) => v >= 1000 ? `${v / 1000}k` : v }
+          ticks: { display: false }
         }
       }
     }

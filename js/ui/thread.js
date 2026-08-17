@@ -9,7 +9,7 @@ import { state } from '../state.js';
 import {
   commentCount, visibleMessages, appendUserMessage, deleteUserMessage,
   aidenThinkingState, USER_MSG_MAX, threadMessageWindow,
-  THREAD_WINDOW_INITIAL, THREAD_WINDOW_CHUNK
+  THREAD_WINDOW_INITIAL, THREAD_WINDOW_CHUNK, COACH_PREVIEW_LIMIT
 } from '../lib/threads.js';
 import { esc } from '../lib/esc.js';
 
@@ -100,15 +100,20 @@ function allThreads(banter) {
  *   `feed-parent` (recent activity: roman, name+line inline).
  * @param {boolean} [opts.hideCount] - skip the "N comments" button (Coach chat
  *   shows count in the card header instead).
+ * @param {boolean} [opts.inline] - Coach chat: expand the preview in place
+ *   instead of opening a second copy of the same lines underneath.
  */
-export function threadBlockHtml(target, parentHtml, banter, { parentClass = 'coach', hideCount = false } = {}) {
+export function threadBlockHtml(target, parentHtml, banter, {
+  parentClass = 'coach', hideCount = false, inline = false
+} = {}) {
   const n = commentCount(threadOf(banter, target));
   const count = (!hideCount && n > 0)
     ? `<button type="button" class="thread-count" data-thread-target="${esc(target)}"
          aria-expanded="false">${n} comment${n === 1 ? '' : 's'}</button>`
     : '';
+  const wrapClass = inline ? 'thread-wrap coach-inline' : 'thread-wrap';
   return `
-    <div class="thread-wrap" data-thread-root="${esc(target)}">
+    <div class="${wrapClass}" data-thread-root="${esc(target)}">
       <div class="thread-parent ${parentClass}" data-thread-target="${esc(target)}" role="button" tabindex="0">
         ${parentHtml}
       </div>
@@ -121,10 +126,13 @@ function messageRowHtml(m, meId) {
   const isAiden = m.kind === 'aiden';
   const name = isAiden ? 'Aiden' : (m.name || 'mate');
   const mine = !isAiden && m.userId === meId;
+  const tag = m.role === 'report'
+    ? `<span class="coach-report-tag">report</span>`
+    : '';
   return `
     <div class="thread-msg" data-msg-id="${esc(m.id)}">
       <div class="thread-msg-body">
-        <span class="thread-msg-name ${isAiden ? 'thread-aiden' : ''}">${esc(name)}</span>
+        <span class="thread-msg-name ${isAiden ? 'thread-aiden' : ''}">${esc(name)}</span>${tag}
         <span class="thread-msg-text">${esc(m.text)}</span>
       </div>
       ${mine ? `<button type="button" class="thread-del" data-del-id="${esc(m.id)}"
@@ -162,8 +170,9 @@ function panelHtml(target, banter, meId) {
         Load earlier · ${win.total - win.shown} more
       </button>`
     : '';
+  const listClass = win.shown > COACH_PREVIEW_LIMIT ? 'thread-list thread-list-capped' : 'thread-list';
   return `
-    <div class="thread-list" data-thread-list="${esc(target)}">
+    <div class="${listClass}" data-thread-list="${esc(target)}">
       ${earlier}
       ${win.messages.map(m => messageRowHtml(m, meId).replace(
         'data-thread-target=""',
@@ -194,12 +203,24 @@ function applyThreadScroll(panel, target) {
   if (intent === 'bottom') scrollIntent.set(target, null);
 }
 
+function markOpen(root, open) {
+  root.classList.toggle('is-open', open);
+  root.setAttribute('aria-expanded', open ? 'true' : 'false');
+  root.closest('.report-card')?.classList.toggle('coach-open', open);
+}
+
 function expand(root, target, banter, meId, { focus = true } = {}) {
   const panel = root.querySelector(`[data-thread-panel="${CSS.escape(target)}"]`);
   if (!panel) return;
   expandedTargets.add(target);
+  markOpen(root, true);
   if (!threadWindowSize.has(target)) {
-    threadWindowSize.set(target, THREAD_WINDOW_INITIAL);
+    // Coach chat starts on the same 3 preview lines, unclipped. Load earlier
+    // walks back through the rest so the card does not jump to a 40-line dump.
+    const start = root.classList.contains('coach-inline')
+      ? COACH_PREVIEW_LIMIT
+      : THREAD_WINDOW_INITIAL;
+    threadWindowSize.set(target, start);
   }
   // Scroll policy:
   // - load-earlier already stashed a preserve intent → keep it
@@ -226,7 +247,9 @@ function expand(root, target, banter, meId, { focus = true } = {}) {
   bindPanel(panel, target);
   applyThreadScroll(panel, target);
 
-  if (focus) {
+  // Coach chat: leave the keyboard down so the 3 expanded lines stay on
+  // screen. Tap the compose box when you want to talk.
+  if (focus && !root.classList.contains('coach-inline')) {
     const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
     input?.focus();
   }
@@ -240,6 +263,7 @@ function collapse(root, target) {
   scrollIntent.delete(target);
   panel.classList.add('hidden');
   panel.innerHTML = '';
+  markOpen(root, false);
   root.querySelector(`.thread-count[data-thread-target="${CSS.escape(target)}"]`)
     ?.setAttribute('aria-expanded', 'false');
 }
@@ -450,6 +474,18 @@ export function bindThreads(container, banter, { onOpen } = {}) {
         ev.preventDefault();
         open();
       }
+    });
+  });
+
+  container.querySelectorAll('[data-thread-close]').forEach(el => {
+    if (el.dataset.threadBound === '1') return;
+    el.dataset.threadBound = '1';
+    el.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const target = el.dataset.threadClose;
+      const root = container.querySelector(`[data-thread-root="${CSS.escape(target)}"]`);
+      if (root) collapse(root, target);
     });
   });
 

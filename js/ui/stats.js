@@ -1,7 +1,7 @@
 // Dash helpers: workouts panel + compact trend chart shells.
 // Spec: docs/superpowers/specs/2026-08-16-dash-home-design.md
 import {
-  weekMarks, streakWeeks
+  weekMarks, weekFlameOn
 } from '../lib/aggregate.js';
 import { esc, safeColor } from '../lib/esc.js';
 import { toggleTrendVisible, trendNameOn } from '../lib/trend-filter.js';
@@ -68,11 +68,11 @@ function dotsRow(days, userId) {
 export function workoutsPanel(state, monday) {
   const rows = state.users.map(u => {
     const days = weekMarks(state.entries, u.id, monday);
-    const streak = streakWeeks(state.entries, u.id, monday);
+    const flame = weekFlameOn(state.entries, u.id, monday);
     return `
       <div class="flex items-center justify-between gap-3 py-2.5 border-b border-edge/60 last:border-0">
         <span class="w-20 truncate font-bold" style="color:${safeColor(u.color)}">${esc(u.name)}
-          ${streak >= 2 ? '<span class="flame" title="' + streak + '-week streak">🔥</span>' : ''}</span>
+          ${flame ? '<span class="flame" title="4 logs this week">🔥</span>' : ''}</span>
         ${dotsRow(days, u.id)}
       </div>`;
   }).join('');

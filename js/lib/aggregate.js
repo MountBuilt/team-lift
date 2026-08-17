@@ -120,6 +120,12 @@ export function daysLoggedThisWeek(entries, userId, mondayStr) {
   return days.size;
 }
 
+/** Workouts-row flame: 4 logged days this Mon–Sun. Clears on the next Monday. */
+export const WEEK_FLAME_MIN = 4;
+export function weekFlameOn(entries, userId, mondayStr) {
+  return daysLoggedThisWeek(entries, userId, mondayStr) >= WEEK_FLAME_MIN;
+}
+
 /** Sum of steps Mon–Sun for one user (null/missing days count as 0). */
 export function weeklySteps(entries, userId, mondayStr) {
   const end = addDays(mondayStr, 6);

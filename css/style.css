@@ -105,6 +105,38 @@ nav.safe-top > .tab {
   color: #e5e5e5;
 }
 .coach-preview .coach-preview-line { margin: 0; }
+.coach-close {
+  display: none;
+  border: 0;
+  background: none;
+  padding: 0.35rem 0.2rem;
+  min-height: 32px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ember);
+  cursor: pointer;
+}
+.report-card.coach-open .coach-close { display: inline-block; }
+.coach-close:hover,
+.coach-close:focus-visible {
+  color: #fdba74;
+  outline: none;
+}
+/* Expand the 3 preview lines in place: hide the truncated copy so the
+   thread list (scrolled to those same newest lines, unclipped) takes the slot. */
+.thread-wrap.coach-inline.is-open > .thread-parent { display: none; }
+.thread-wrap.coach-inline > .thread-panel {
+  margin-top: 0.5rem;
+  margin-left: 0;
+  padding: 0.2rem 0 0.2rem 0.85rem;
+  border-left: 3px solid var(--ember);
+}
+.thread-wrap.coach-inline .thread-msg {
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
 .coach-report-tag {
   display: inline-block;
   margin-left: 0.35rem;
@@ -155,11 +187,13 @@ nav.safe-top > .tab {
 /* Windowed chat history: cap height so 5 days of coach chat does not
    stretch the dashboard. Opens scrolled to bottom; load-earlier prepends. */
 .thread-list {
-  max-height: min(50vh, 22rem);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding-right: 0.25rem;
+}
+.thread-list-capped {
+  max-height: min(50vh, 22rem);
 }
 .thread-earlier {
   display: block;
@@ -345,6 +379,67 @@ nav.safe-top > .tab {
 /* Snack ring around a week dot. Offset so it reads on accent or green fill. */
 .dot-snack {
   box-shadow: 0 0 0 2px #1a1a1a, 0 0 0 3.5px #f97316;
+}
+
+/* Snack pair: left card sets the row height; right shout fills the leftover. */
+.snack-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.snack-pair > .fx-card {
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.nudge-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.nudge-fill {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.4rem;
+  overflow: hidden;
+}
+.nudge-stamp {
+  position: absolute;
+  left: -8%;
+  top: 8%;
+  font-family: 'Anton', 'Arial Narrow', sans-serif;
+  font-size: 4.6rem;
+  line-height: 0.78;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(249, 115, 22, 0.1);
+  transform: rotate(-11deg);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.nudge-shout {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: 'Anton', 'Arial Narrow', sans-serif;
+  font-size: 1.35rem;
+  line-height: 1.05;
+  letter-spacing: 0.015em;
+  background: var(--heat);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  filter:
+    drop-shadow(0 1px 0 rgba(0, 0, 0, 0.65))
+    drop-shadow(0 6px 10px rgba(249, 115, 22, 0.22));
 }
 
 /* Snack pair: after a tick both cards collapse and the stack slides up. */

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   entriesInWindow, chartWindow, weightSeries, stepsMatrix, workoutDots,
   workoutWeek, weekMarks, weeklyWorkoutCount, streakWeeks, teamTiles, groupFeedByDay,
-  lastWeight, daysLoggedThisWeek, weeklySteps, userHasLogged
+  lastWeight, daysLoggedThisWeek, weeklySteps, userHasLogged, weekFlameOn
 } from '../js/lib/aggregate.js';
 
 const challenge = { title: 'Test', startDate: '2026-07-06', endDate: '2026-08-02' };
@@ -230,6 +230,30 @@ test('daysLoggedThisWeek counts Mon-Sun days with hasAnyLog', () => {
   assert.equal(daysLoggedThisWeek(entries, 'u1', monday), 3);
   assert.equal(daysLoggedThisWeek(entries, 'u2', monday), 1);
   assert.equal(daysLoggedThisWeek([], 'u1', monday), 0);
+});
+
+test('weekFlameOn lights after 4 logged days this week and resets Monday', () => {
+  const monday = '2026-07-13';
+  const lastWeek = [
+    e('u1', '2026-07-06', { steps: 1000 }),
+    e('u1', '2026-07-07', { steps: 1000 }),
+    e('u1', '2026-07-08', { steps: 1000 }),
+    e('u1', '2026-07-09', { steps: 1000 }),
+    e('u1', '2026-07-10', { steps: 1000 })
+  ];
+  assert.equal(weekFlameOn(lastWeek, 'u1', monday), false, 'last week does not carry');
+
+  const three = [
+    ...lastWeek,
+    e('u1', '2026-07-13', { steps: 1000 }),
+    e('u1', '2026-07-14', { weight: 90 }),
+    e('u1', '2026-07-15', { dailyChallenge: true })
+  ];
+  assert.equal(weekFlameOn(three, 'u1', monday), false, '3 entries this week stay dark');
+
+  const four = [...three, e('u1', '2026-07-16', { workoutParts: ['legs'] })];
+  assert.equal(weekFlameOn(four, 'u1', monday), true, '4th entry this week lights it');
+  assert.equal(weekFlameOn(four, 'u2', monday), false);
 });
 
 test('weeklySteps sums steps Mon-Sun for one user', () => {

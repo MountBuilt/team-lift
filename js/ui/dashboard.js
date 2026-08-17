@@ -32,7 +32,8 @@ let snackCollapsePainted = false;
  * Coach chat home card: last 3 messages in the continuous report thread.
  * Morning report is just another bubble (role:report). Offline / pre-tick
  * falls back to template or banter.report as a synthetic preview line.
- * Expanded thread opens at the bottom with load-earlier windowing.
+ * Tap expands those same lines in place (full text + earlier history +
+ * compose). Close collapses back to the 3-line preview.
  */
 function reportCard(state, today) {
   const banter = state.banter;
@@ -66,8 +67,8 @@ function reportCard(state, today) {
     }).join('')}
   </div>`;
   const openHint = n > 0
-    ? `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat · ${n} in thread</p>`
-    : `<p class="mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat</p>`;
+    ? `<p class="coach-open-hint mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat · ${n} in thread</p>`
+    : `<p class="coach-open-hint mt-2 text-[11px] font-bold text-neutral-500">Tap to open chat</p>`;
   let seenReport = null;
   try { seenReport = localStorage.getItem(SEEN_REPORT_KEY); } catch { /* private */ }
   const unseen = reportIsUnseen(currentReportDay(banter), seenReport, today);
@@ -75,11 +76,16 @@ function reportCard(state, today) {
   return `
     <div class="flex items-center justify-between">
       <h3 class="eyebrow">Coach chat ${newPip}</h3>
-      <span class="eyebrow text-neutral-600">${n > 0 ? `${n} msgs` : 'live'}</span>
+      <span class="flex items-center gap-2">
+        <button type="button" class="coach-close" data-thread-close="${REPORT_TARGET}"
+          aria-label="Close chat">Close</button>
+        <span class="eyebrow text-neutral-600">${n > 0 ? `${n} msgs` : 'live'}</span>
+      </span>
     </div>
     ${threadBlockHtml(REPORT_TARGET, previewHtml + openHint, banter, {
       parentClass: 'report-parent coach-preview',
-      hideCount: true
+      hideCount: true,
+      inline: true
     })}`;
 }
 
@@ -152,6 +158,40 @@ function reducedMotion() {
     && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
 }
 
+// Grow the companion-card shout until it fills the box next to the snack.
+// Binary search so long facts shrink and short pushes go big.
+function fitShout(el) {
+  const box = el?.closest('.nudge-fill');
+  if (!el || !box) return;
+  const max = 30;
+  const min = 13;
+  if (box.clientHeight < 8 || box.clientWidth < 8) return;
+  let lo = min;
+  let hi = max;
+  let best = min;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    el.style.fontSize = `${mid}px`;
+    const fits = el.scrollHeight <= box.clientHeight + 1
+      && el.scrollWidth <= box.clientWidth + 1;
+    if (fits) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  el.style.fontSize = `${best}px`;
+}
+
+function fitNudgeShout(container) {
+  const el = container.querySelector('.nudge-shout');
+  if (!el) return;
+  const run = () => fitShout(el);
+  run();
+  requestAnimationFrame(run);
+}
+
 function snackStripHtml(state, today, fx) {
   const ch = dailyChallenge(today, state.challenge.startDate);
   const line = snackCrewLine(state.entries, state.users, today, ch);
@@ -179,7 +219,7 @@ function snackPairHtml(state, today, fx) {
   const nudge = challengeNudgeCard(today, ch.name);
   const collapsing = meDone && playSnackCollapse;
   if (collapsing) snackCollapsePainted = true;
-  return `<div id="snack-pair" class="flex gap-2 items-stretch${collapsing ? ' snack-pair-collapse' : ''}">
+  return `<div id="snack-pair" class="snack-pair${collapsing ? ' snack-pair-collapse' : ''}">
     ${card(`
       <div class="flex items-center justify-between gap-2">
         <h3 class="eyebrow">Daily snack</h3>
@@ -188,11 +228,16 @@ function snackPairHtml(state, today, fx) {
       <p class="mt-1 display text-2xl tracking-tight heat-text leading-none">${ch.reps} ${esc(ch.name.toUpperCase())}</p>
       <button id="challenge-done" class="pressable mt-3 w-full rounded-xl bg-accent py-2.5 display text-base tracking-wide
         text-black active:bg-accentDim">${esc(tick.toUpperCase())}</button>
-    `, fx, 'flex-1 min-w-0')}
+    `, fx, '')}
     ${card(`
-      <h3 class="eyebrow">${esc(nudge.eyebrow)}</h3>
-      <p class="mt-2 text-sm leading-snug text-neutral-300">${esc(nudge.text)}</p>
-    `, fx, 'flex-1 min-w-0')}
+      <div class="nudge-card">
+        <h3 class="eyebrow">${esc(nudge.eyebrow)}</h3>
+        <div class="nudge-fill">
+          <span class="nudge-stamp" aria-hidden="true">${esc(nudge.eyebrow)}</span>
+          <p class="nudge-shout">${esc(nudge.text)}</p>
+        </div>
+      </div>
+    `, fx, '')}
   </div>`;
 }
 
@@ -235,6 +280,7 @@ export function renderDashboard(container, state, {
     animate, visibleUserIds: trendVisibleUserIds()
   })).catch(() => {});
   if (animate) runCountUps(container);
+  fitNudgeShout(container);
 
   const pair = container.querySelector('#snack-pair');
   if (pair?.classList.contains('snack-pair-collapse')) {

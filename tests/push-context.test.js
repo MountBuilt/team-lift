@@ -97,6 +97,23 @@ test('buildContext: continuity material for freshness', () => {
   assert.ok(ctx.memory[0].lines[0].includes('milk carton'));
 });
 
+test('buildContext: memory.when is when they spoke, not a false yesterday', () => {
+  const ctx = buildContext({
+    ...base,
+    today: '2026-08-18',
+    banter: {
+      ...banter,
+      memory: [
+        { day: '2026-08-17', lines: ['Pery: Aiden, you are becoming too needy'] },
+        { day: '2026-08-12', lines: ['Simon: still here'] }
+      ]
+    }
+  });
+  const byDay = Object.fromEntries(ctx.memory.map(m => [m.day, m.when]));
+  assert.equal(byDay['2026-08-17'], 'earlier');
+  assert.equal(byDay['2026-08-12'], 'on 2026-08-12');
+});
+
 test('buildContext: withholds legacy content-free memory digests', () => {
   const ctx = buildContext({
     ...base,

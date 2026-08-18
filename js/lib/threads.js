@@ -151,6 +151,51 @@ export function aidenThinkingState(thread, now = new Date(), windowMinutes = THI
   return remaining > 0 ? { thinking: true, expiresInMs: remaining } : quiet;
 }
 
+/** User comments posted after the last Aiden message (array order). */
+export function usersAfterLastAiden(thread) {
+  const messages = thread?.messages || [];
+  let lastAidenIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].kind === 'aiden') { lastAidenIdx = i; break; }
+  }
+  const tail = lastAidenIdx < 0 ? messages : messages.slice(lastAidenIdx + 1);
+  return tail.filter(m => m.kind === 'user' && m.deleted !== true);
+}
+
+/**
+ * lastAidenAt to stamp after a successful reply.
+ *
+ * The tick used to stamp the NUC pre-call clock. Phone `at` is often a second
+ * or two ahead, so the same comment stayed pending and the rerun/timer
+ * answered it again (live 2026-08-18, twice). Cover the comments the model
+ * actually saw. Mid-call comments have a later `at` and stay pending.
+ */
+export function answeredThroughAt(startedIso, replies, threadJobs) {
+  let latest = startedIso || '';
+  const answered = new Set(
+    Object.entries(replies || {})
+      .filter(([, text]) => String(text || '').trim())
+      .map(([target]) => target)
+  );
+  for (const job of threadJobs || []) {
+    if (!answered.has(job.target)) continue;
+    for (const m of job.newUser || []) {
+      if ((m.at || '') > latest) latest = m.at;
+    }
+  }
+  return latest;
+}
+
+/**
+ * threadScanAt so a client-ahead pendingAt does not keep looking unseen
+ * after this tick already ran.
+ */
+export function scanMarkerAt(startedIso, pendingAt) {
+  const a = startedIso || '';
+  const b = typeof pendingAt === 'string' ? pendingAt : '';
+  return a >= b ? a : b;
+}
+
 /**
  * Pending Aiden work for one thread target.
  * User msgs with at > lastAidenAt (or any if never answered) and not deleted.
@@ -284,19 +329,35 @@ export function appendReportMessage(thread, { text, day, nowIso }) {
  * Memory digest of coach-chat lines that just aged out of the 5-day window.
  * Weekly wipe is gone, so this is how callbacks survive.
  */
+/**
+ * When those words were said, for the copywriter. Purged coach lines are at
+ * least REPORT_THREAD_MAX_AGE_DAYS old. A digest `day` inside that window is
+ * the write date (the 2026-08-18 "Pery said yesterday" bug), not speech.
+ */
+export function memoryWhen(day, today) {
+  if (!day || !today) return 'earlier';
+  const oldestFresh = addDays(today, -REPORT_THREAD_MAX_AGE_DAYS);
+  if (day > oldestFresh) return 'earlier';
+  return `on ${day}`;
+}
+
 export function digestDroppedReportMessages(prevThreads, nextThreads, today) {
   const before = visibleMessages(prevThreads?.[REPORT_TARGET]);
   const afterIds = new Set(visibleMessages(nextThreads?.[REPORT_TARGET]).map(m => m.id));
   const dropped = before.filter(m => m?.id && !afterIds.has(m.id));
   if (dropped.length === 0) return null;
   const lines = [];
+  const spokenDays = [];
   for (const m of dropped) {
     const who = m.kind === 'aiden' ? 'Aiden' : (m.name || 'someone');
     const text = String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (text) lines.push(`${who}: ${text}`);
+    const spoken = localDateFromAt(m.at) || m.reportDay || '';
+    if (spoken) spokenDays.push(spoken);
   }
   if (lines.length === 0) return null;
-  return { day: today, lines: lines.slice(0, 8) };
+  const day = spokenDays.sort().at(-1) || today;
+  return { day, lines: lines.slice(0, 8) };
 }
 
 /**
@@ -454,16 +515,26 @@ export function trimMemory(memory, keep = MEMORY_KEEP) {
 /**
  * Apply Aiden replies + clean tombstones after a successful tick.
  *
- * `lastAidenAt` defaults to `nowIso` but the orchestrator passes the PRE-CALL
- * timestamp instead. The model call takes seconds to minutes, and a comment
- * posted during it has `at` later than that, so it stays pending and gets
- * answered next tick rather than being silently marked as read.
+ * `lastAidenAt` defaults to `nowIso` but the orchestrator passes
+ * `answeredThroughAt` (max of pre-call and the comments this call answered).
+ * A comment posted during the model call has `at` later than that, so it stays
+ * pending and gets answered next tick rather than being silently marked as read.
  */
 export function applyThreadReplies(threads, replies, nowIso, lastAidenAt = nowIso) {
   const next = { ...(threads || {}) };
   for (const [target, text] of Object.entries(replies || {})) {
     if (!text || !String(text).trim()) continue;
     const prev = next[target] || { messages: [], lastAidenAt: null };
+    const pending = pendingForThread(prev);
+    // Never stack a second Aiden on a thread whose last speaker is already
+    // him. A rerun/parallel tick used to append blindly after a fresh re-read
+    // that already contained the first reply (live 2026-08-18). Mid-call
+    // comments sit *before* that Aiden message and stay pending via lastAidenAt
+    // for the *next* tick; this write must not answer them (the model never saw
+    // them) and must not add another line for the comment he just answered.
+    if (usersAfterLastAiden(prev).length === 0 && pending.deletesToAck.length === 0) {
+      continue;
+    }
     const messages = (prev.messages || [])
       .filter(m => !(m.kind === 'user' && m.deleted === true && (m.at || '') <= (prev.lastAidenAt || lastAidenAt)))
       .concat([{

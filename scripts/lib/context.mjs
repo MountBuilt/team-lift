@@ -15,7 +15,8 @@ import { addDays, mondayOf } from '../../js/lib/dates.js';
 import { restDayStatus, displayFeedLine, factualFeedLine, isBigEffort } from '../../js/lib/banter.js';
 import { yesterdaySummary, weightDelta } from '../../js/lib/report.js';
 import {
-  thisWeekStandings, lastWeekStandings, AIDEN_MSG_MAX, FEED_LINE_MAX, REPORT_TARGET, WEEKLY_TARGET
+  thisWeekStandings, lastWeekStandings, AIDEN_MSG_MAX, FEED_LINE_MAX, REPORT_TARGET, WEEKLY_TARGET,
+  memoryWhen
 } from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
 
@@ -55,7 +56,7 @@ export const MOODS = [
   { name: 'wired', note: 'Overcaffeinated and loud. Short bursts, exclamations, ready to start something.' },
   { name: 'filthy', note: 'Crass and rude in the change-room register. Lean into the innuendo and the harden-up. This is the mood the crew actually wants, do not soften it.' },
   { name: 'dry', note: 'Deadpan. Understated, one flat brutal observation, no exclamation marks.' },
-  { name: 'combative', note: 'Argue. Whoever spoke last is wrong and you say so. Push back, take the opposite side, refuse to concede.' },
+  { name: 'combative', note: 'Playful disagreement, not a fight. Take the piss, do not concede every point, then land a joke. Never hostile, never "you are wrong" as the whole reply.' },
   { name: 'unhinged', note: 'Go somewhere nobody expected. A tangent, a conspiracy theory, a stupid hypothetical, a grudge about something unrelated. Do not circle back to the stats.' },
   { name: 'sulking', note: 'Wounded and passive aggressive because nobody appreciates you. Be a bit pathetic about it, it is funnier than being tough.' },
   { name: 'grandiose', note: 'You are the greatest coach who ever lived and this crew does not deserve you. Absurd self-importance.' },
@@ -113,7 +114,7 @@ function pickMoodName(opts = {}) {
     if (total > 0 && logged === total) return 'wired';
     if (skipped.length >= 2) return 'filthy';
     const silent = Array.isArray(y.silent) ? y.silent.length : (total - logged);
-    if (total > 0 && silent >= total / 2) return 'combative';
+    if (total > 0 && silent >= total / 2) return 'dry';
     if (total > 0 && logged / total < 0.35) return 'bored';
     return 'dry';
   }
@@ -125,9 +126,21 @@ function pickMoodName(opts = {}) {
     return 'dry';
   }
 
-  if (hasThread) return 'combative';
+  if (hasThread) return chatMoodName(opts);
   if (hasMorning) return 'wired';
   return 'dry';
+}
+
+/** Fun locker-room chat moods. Combative is not in the pool. */
+const CHAT_MOODS = [
+  'filthy', 'wired', 'dry', 'unhinged', 'conspiratorial', 'grandiose', 'affectionate'
+];
+
+function chatMoodName(opts) {
+  const key = eventTargets(opts).slice().sort().join(',') || 'thread';
+  let n = 0;
+  for (let i = 0; i < key.length; i++) n = (n + key.charCodeAt(i) * (i + 1)) | 0;
+  return CHAT_MOODS[Math.abs(n) % CHAT_MOODS.length];
 }
 
 /** Mood that fits this event. Always a member of MOODS plus targets. */
@@ -308,7 +321,9 @@ export function buildContext({
     // {notes: ["workouts: Simon bantered (2 msgs)"]} — metadata with nothing to
     // call back to. Withhold them rather than hand Aiden noise; they age out of
     // the 14-day window on their own.
-    memory: (banter?.memory ?? []).filter(m => Array.isArray(m?.lines) && m.lines.length > 0),
+    memory: (banter?.memory ?? [])
+      .filter(m => Array.isArray(m?.lines) && m.lines.length > 0)
+      .map(m => ({ day: m.day, when: memoryWhen(m.day, today), lines: m.lines })),
     threadWork,
     feedLineWork,
     pushes: [...morning.map(pushFor('morning')), ...evening.map(pushFor('evening'))]

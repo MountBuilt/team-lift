@@ -25,8 +25,9 @@
 // DO NOT reintroduce whole-map `threads` writes. The client and this script
 // both used to PATCH the entire map, so any comment posted while the model was
 // thinking (1-3 minutes) was silently destroyed. Writes are per-thread-key now
-// and `lastAidenAt` is stamped with the PRE-CALL time so a comment that lands
-// mid-call is answered on the next tick instead of being marked as read.
+// and `lastAidenAt` is stamped with max(pre-call, answered comment ats) so a
+// client-ahead clock cannot reopen the same comment, while a comment that
+// lands mid-call still stays pending for the next tick.
 //
 // Flags:
 //   --dry-run            full tick including the model call; prints intended
@@ -43,10 +44,10 @@ import {
   collectThreadJobs, digestCardThreads, wipeCardThreads, purgeStaleFeedThreads,
   applyThreadReplies, trimMemory, threadWritePlan, REPORT_TARGET, WEEKLY_TARGET,
   appendReportMessage, purgeReportThreadMessages, digestDroppedReportMessages,
-  collectFeedLineJobs, purgeStaleFeedLines, feedLineWritePlan, hhmm
+  collectFeedLineJobs, purgeStaleFeedLines, feedLineWritePlan,
+  answeredThroughAt, scanMarkerAt
 } from '../js/lib/threads.js';
 import { mondayOf } from '../js/lib/dates.js';
-import { reportPushPayload, replyPushPayload, replyPushUserIds } from '../js/lib/pushes.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -164,16 +165,10 @@ async function main() {
     entries, feedLines: feedLinesBase, today
   });
   const work = decidePushWork({ users, entries, pushState, now, today });
-  // One lock-screen ping: if the report is ready to announce, it replaces
-  // the generated morning wave so nobody gets two at 7:30.
-  if (probe.reportPushDue && work.morningDue) {
-    work.morning = [];
-  }
 
   log(`report=${probe.wantReport} weekly=${probe.wantWeekly} threads=${threadJobs.length}` +
       `(${threadJobs.map(j => j.kind).join(',')}) feedLines=${feedLineJobs.length} ` +
       `morning=${work.morning.length} evening=${work.evening.length} ` +
-      `reportPush=${probe.reportPushDue ? 'due' : 'no'} ` +
       `probe=${probe.unseenComment ? 'comment' : probe.scanStale ? 'staleScan' : 'time'}`);
 
   const pushStatePatch = {};
@@ -189,16 +184,13 @@ async function main() {
     // the probe goes quiet again, and flush any thread / feedLine purge.
     const plan = threadWritePlan(banter?.threads || {}, threads);
     const flPlan = feedLineWritePlan(banter?.feedLines || {}, feedLinesBase);
-    const idleObj = { threadScanAt: startedIso };
+    const idleObj = { threadScanAt: scanMarkerAt(startedIso, banter?.pendingAt) };
     const idlePaths = ['threadScanAt'];
     if (droppedCoach) {
       idleObj.memory = memory;
       idlePaths.push('memory');
     }
     await writeBanter(idleObj, idlePaths, plan, flPlan);
-    if (probe.reportPushDue) {
-      await sendReportUp(users, banter?.report?.text, pushStatePatch, work);
-    }
     if (Object.keys(pushStatePatch).length) {
       await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
     }
@@ -242,8 +234,10 @@ async function main() {
   );
   const writtenIso = new Date().toISOString();
   if (Object.keys(replies).length) {
-    // lastAidenAt = startedIso (pre-call) so mid-call comments stay pending.
-    nextThreads = applyThreadReplies(nextThreads, replies, writtenIso, startedIso);
+    // Cover the comments this call actually answered (client clocks run
+    // ahead of the NUC). Mid-call comments have a later at and stay pending.
+    const answeredAt = answeredThroughAt(startedIso, replies, threadJobs);
+    nextThreads = applyThreadReplies(nextThreads, replies, writtenIso, answeredAt);
   }
 
   const report = (copy.report || '').trim();
@@ -268,7 +262,7 @@ async function main() {
   const flPlan = feedLineWritePlan(fresh?.feedLines || banter?.feedLines || {}, nextFeedLines);
 
   const obj = {
-    threadScanAt: startedIso,
+    threadScanAt: scanMarkerAt(startedIso, banter?.pendingAt),
     memory,
     mood: {
       name: context.mood.name,
@@ -301,21 +295,12 @@ async function main() {
   await dropLegacyFields(fresh ?? banter);
 
   // ---- 5. pushes ----------------------------------------------------------
+  // Only morning motivation and the evening no-activity nudge. Report-up and
+  // Aiden-replied were waking phones all day; they are off.
   // Spec (2026-07-13): advance lastMorning/lastEvening after the wave was
   // attempted. A single flaky endpoint must not re-spam everyone else on the
   // next 30s tick. (All-or-nothing stamping did exactly that on 2026-08-06:
   // Hunt/Phill failed, Simon/Pery got ~6 morning pushes in three minutes.)
-  const clock = hhmm(now);
-  const reportTextNow = obj.report?.text || fresh?.report?.text || banter?.report?.text;
-  const reportDayNow = obj.reportDay || fresh?.reportDay || banter?.reportDay;
-  const reportUpNow = reportDayNow === today && reportTextNow
-    && (pushState?.lastReport ?? '') !== today
-    && clock >= '07:30' && clock < '20:30';
-  if (reportUpNow) {
-    await sendReportUp(users, reportTextNow, pushStatePatch, work);
-    work.morning = [];
-  }
-
   const copyFor = (u, kind) => (copy.pushes || []).find(p => p.userId === u.id && p.kind === kind);
   for (const [kind, targets, stamp] of [
     ['morning', work.morning, 'lastMorning'],
@@ -334,36 +319,10 @@ async function main() {
     }
   }
 
-  if (Object.keys(replies).length) {
-    await sendReplyPushes(users, threadJobs, replies);
-  }
-
   if (Object.keys(pushStatePatch).length) {
     await patch('config/push', pushStatePatch, Object.keys(pushStatePatch));
   }
   log('tick complete');
-}
-
-async function sendReportUp(users, reportText, pushStatePatch, work) {
-  const payload = reportPushPayload(reportText);
-  const enabled = (users || []).filter(u => u.push?.enabled === true && u.push.endpoint);
-  const results = await Promise.all(enabled.map(u => sendPush(u, payload)));
-  pushStatePatch.lastReport = todayStr();
-  if (work?.morningDue) pushStatePatch.lastMorning = todayStr();
-  const failed = results.filter(ok => !ok).length;
-  log(`report-up: ${enabled.length - failed}/${enabled.length} sent`);
-}
-
-async function sendReplyPushes(users, threadJobs, replies) {
-  const byId = new Map((users || []).map(u => [u.id, u]));
-  for (const userId of replyPushUserIds(threadJobs, replies)) {
-    const u = byId.get(userId);
-    if (!u?.push?.enabled || !u.push.endpoint) continue;
-    const job = (threadJobs || []).find(j =>
-      replies[j.target] && (j.newUser || []).some(m => m.userId === userId));
-    const text = job ? replies[job.target] : '';
-    await sendPush(u, replyPushPayload(text));
-  }
 }
 
 /**

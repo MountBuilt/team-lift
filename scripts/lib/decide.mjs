@@ -43,9 +43,9 @@ export function probeWork({ banter, pushState, now, today }) {
   const morningDue = morningUnsent && t >= MORNING_AFTER && t < MORNING_CUTOFF;
   const skipMorning = morningUnsent && t >= MORNING_CUTOFF;
   const eveningDue = eveningUnsent && t >= EVENING_AFTER;
-  const reportReady = (banter?.reportDay === today) && Boolean(banter?.report?.text);
-  const reportUnsent = (pushState?.lastReport ?? '') !== today;
-  const reportPushDue = reportReady && reportUnsent && t >= MORNING_AFTER && t < MORNING_CUTOFF;
+  // Report-up and Aiden-replied pushes are off. Only the morning motivation
+  // wave and the evening no-activity nudge go to the lock screen.
+  const reportPushDue = false;
 
   return {
     wantReport,
@@ -58,7 +58,7 @@ export function probeWork({ banter, pushState, now, today }) {
     skipMorning,
     reportPushDue,
     needsFullFetch: wantReport || wantWeekly || threadsPossible || morningDue || eveningDue
-      || skipMorning || reportPushDue
+      || skipMorning
   };
 }
 

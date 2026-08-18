@@ -101,13 +101,11 @@ when orchestrator/watcher code changed.
   yesterday and the day before, collapsed to the selected day until tapped.
   There is no calendar input; nobody backfills further than two days.
 - Web push (`js/push.js`, toggle on the Me view): raw VAPID, subscription
-  stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs`: morning
-  motivation from 7:30am (skipped after 8:30pm), evening reminder from 8:30pm
-  only if nothing is logged that day; **report-up** from 7:30 once today's
-  report exists (`lastReport`, replaces the morning wave so they are not
-  doubled); **Aiden-replied** to the humans he just answered (any hour).
-  State in `config/push` (`lastMorning`/`lastEvening`/`lastReport`) so missed
-  ticks self-heal and never double-send.
+  stored on `users/{id}.push`. Sent by `scripts/orchestrator.mjs`: **morning
+  motivation** from 7:30am (skipped after 8:30pm) and **evening reminder**
+  from 8:30pm only if nothing is logged that day. No report-up ping, no
+  Aiden-replied ping. State in `config/push` (`lastMorning`/`lastEvening`)
+  so missed ticks self-heal and never double-send.
 
 ## Aiden (2026-08-07) — do not regress
 
@@ -133,7 +131,9 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   him (report data, a new log, a new thread, a delete, a push wave) and
   persists `{ name, targets, trigger }` on `config/banter.mood` until the
   next event. Same-thread follow-ups stay in that mood (`sticky: true`).
-  Includes non-agreeable moods (`combative`, `sulking`, `unhinged`, `filthy`).
+  Includes non-agreeable moods (`sulking`, `unhinged`, `filthy`). Human
+  threads pick a fun chat mood, never `combative`. Combative is kept in
+  `MOODS` but is not selected (it was landing as a fight, not banter).
 - **Threads are conversations after turn 1.** `aidenTurns` / `turnGuidance`:
   turn 1 hooks to the log or report; later turns go off topic and vary shape.
 - **Coach chat (continuous report thread).** `config/banter.report` ({day, text})
@@ -158,13 +158,16 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   - Delete **before** Aiden answers → hard remove; **after** → soft-delete.
   - Feed threads purged on **date only** (3 days). Report messages 5 days.
     Aged report-thread lines are digested into `memory` on purge (weekly
-    wipe no longer feeds memory). Never whole-map PATCH of `threads` or
-    `feedLines`.
+    wipe no longer feeds memory). Digest `day` is when they spoke, not the
+    purge date; context adds `when` so Aiden cannot call a 5-day-old line
+    yesterday. Never whole-map PATCH of `threads` or `feedLines`.
 - **Never PATCH the whole `threads` map.** The client writes one key via
   `FieldPath`; the tick writes a per-key `threadWritePlan` computed against a
   freshly re-read doc. Whole-map writes were destroying comments posted while
-  the model was thinking. And `lastAidenAt` is stamped with the **pre-call**
-  time so a mid-call comment stays pending.
+  the model was thinking. `lastAidenAt` is max(pre-call, answered comment
+  `at`) so a phone clock ahead of the NUC cannot reopen the same comment;
+  a mid-call comment still stays pending. `applyThreadReplies` will not
+  stack a second Aiden message when the last speaker is already him.
 - **The tick is event-first + a 2 min safety probe.** Clients stamp
   `config/banter.pendingAt` (`pokeAiden()`); the NUC `teamlift-banter-watch`
   service listens with Firestore `onSnapshot` and runs the tick immediately.

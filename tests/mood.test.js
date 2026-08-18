@@ -43,13 +43,13 @@ test('shouldRefreshMood: a morning or evening push wave is a new event', () => {
   assert.equal(shouldRefreshMood(prev, { evening: [{ id: 'u1' }] }), true);
 });
 
-test('moodFromEvent: thin yesterday turnout is combative', () => {
+test('moodFromEvent: thin yesterday turnout is dry, not a fight', () => {
   const mood = moodFromEvent({
     wantReport: true,
     yesterday: { loggedCount: 2, totalMembers: 8, silent: ['a', 'b', 'c', 'd', 'e', 'f'] }
   });
   named(mood.name);
-  assert.equal(mood.name, 'combative');
+  assert.equal(mood.name, 'dry');
 });
 
 test('moodFromEvent: full house is wired', () => {
@@ -88,6 +88,16 @@ test('moodFromEvent: a big-effort feed line is grandiose', () => {
   assert.equal(mood.name, 'grandiose');
 });
 
+test('moodFromEvent: a human thread is banter, never combative', () => {
+  const mood = moodFromEvent({
+    threadJobs: [{ target: 'report' }, { target: 'u1_2026-08-16' }]
+  });
+  assert.ok(MOODS.some(m => m.name === mood.name));
+  assert.notEqual(mood.name, 'combative');
+  assert.ok(mood.note);
+  assert.deepEqual(mood.targets.sort(), ['report', 'u1_2026-08-16']);
+});
+
 test('moodFromEvent: returns a known mood with targets from the event', () => {
   const mood = moodFromEvent({
     threadJobs: [{ target: 'report' }, { target: 'u1_2026-08-16' }]
@@ -111,6 +121,6 @@ test('resolveMood: a new event picks from the data, not the previous name', () =
     wantReport: true,
     yesterday: { loggedCount: 1, totalMembers: 8, silent: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] }
   });
-  assert.equal(next.name, 'combative');
+  assert.equal(next.name, 'dry');
   assert.notEqual(next.sticky, true);
 });

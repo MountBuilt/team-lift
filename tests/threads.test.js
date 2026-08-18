@@ -12,6 +12,7 @@ import {
   purgeStaleFeedLines, feedLineWritePlan, reportPreviewMessages, latestReportBody,
   currentReportDay,
   clipCoachPreviewText, threadMessageWindow,
+  answeredThroughAt, scanMarkerAt, memoryWhen,
   CARD_TARGETS, REPORT_TARGET, USER_MSG_MAX, REPORT_THREAD_MAX_AGE_DAYS,
   COACH_PREVIEW_LIMIT, THREAD_WINDOW_INITIAL
 } from '../js/lib/threads.js';
@@ -220,6 +221,71 @@ describe('digest / wipe / purge / apply', () => {
     // Dan's comment must still be pending on the next tick.
     const pending = pendingForThread(next[REPORT_TARGET]);
     assert.deepEqual(pending.newUser.map(m => m.id), ['2']);
+  });
+  it('refuses to stack a second Aiden on a thread he just answered (live 2026-08-18 double)', () => {
+    // Pery at 03:27:15, first reply 03:28:10, rerun 90s later appended again.
+    // The write path must no-op when the last message is already Aiden.
+    const threads = {
+      [REPORT_TARGET]: {
+        lastAidenAt: '2026-08-18T03:27:15.000Z',
+        messages: [
+          { id: 'p1', kind: 'user', name: 'Pery', text: 'Why the double bashing', at: '2026-08-18T03:27:15.802Z' },
+          { id: 'a1', kind: 'aiden', name: 'Aiden', text: 'Bored? Dead wrong.', at: '2026-08-18T03:28:10.165Z' }
+        ]
+      }
+    };
+    const next = applyThreadReplies(
+      threads,
+      { [REPORT_TARGET]: 'Sit down, nobody is coming.' },
+      '2026-08-18T03:29:50.110Z',
+      '2026-08-18T03:28:11.390Z'
+    );
+    const aidens = next[REPORT_TARGET].messages.filter(m => m.kind === 'aiden');
+    assert.equal(aidens.length, 1);
+    assert.equal(aidens[0].text, 'Bored? Dead wrong.');
+  });
+});
+
+describe('answeredThroughAt', () => {
+  it('covers a client-ahead comment so the next tick does not reopen it', () => {
+    // Phone clock was ahead of the NUC. Tick start < comment.at, so stamping
+    // lastAidenAt with the pre-call time left the same comment pending.
+    const at = answeredThroughAt(
+      '2026-08-18T03:27:15.000Z',
+      { report: 'Bored? Dead wrong.' },
+      [{ target: 'report', newUser: [{ at: '2026-08-18T03:27:15.802Z' }] }]
+    );
+    assert.equal(at, '2026-08-18T03:27:15.802Z');
+  });
+  it('keeps the pre-call stamp when that is later than the comments', () => {
+    const at = answeredThroughAt(
+      '2026-08-18T03:27:16.000Z',
+      { report: 'Righto.' },
+      [{ target: 'report', newUser: [{ at: '2026-08-18T03:27:15.802Z' }] }]
+    );
+    assert.equal(at, '2026-08-18T03:27:16.000Z');
+  });
+  it('ignores jobs that did not actually get a reply', () => {
+    const at = answeredThroughAt(
+      '2026-08-18T03:27:15.000Z',
+      { report: '' },
+      [{ target: 'report', newUser: [{ at: '2026-08-18T03:27:15.802Z' }] }]
+    );
+    assert.equal(at, '2026-08-18T03:27:15.000Z');
+  });
+});
+
+describe('scanMarkerAt', () => {
+  it('advances past a client-ahead pendingAt so the probe goes quiet', () => {
+    assert.equal(
+      scanMarkerAt('2026-08-18T03:27:15.000Z', '2026-08-18T03:27:15.802Z'),
+      '2026-08-18T03:27:15.802Z'
+    );
+    assert.equal(
+      scanMarkerAt('2026-08-18T03:27:16.000Z', '2026-08-18T03:27:15.802Z'),
+      '2026-08-18T03:27:16.000Z'
+    );
+    assert.equal(scanMarkerAt('2026-08-18T03:27:16.000Z', ''), '2026-08-18T03:27:16.000Z');
   });
 });
 
@@ -475,10 +541,19 @@ describe('continuous report thread', () => {
     const next = purgeReportThreadMessages(prev, { today: '2026-07-19' });
     const digest = digestDroppedReportMessages(prev, next, '2026-07-19');
     assert.ok(digest);
-    assert.equal(digest.day, '2026-07-19');
+    assert.equal(digest.day, '2026-07-10', 'day is when they spoke, not the purge date');
     assert.ok(digest.lines.some(l => l.includes('old roast')));
     assert.equal(digest.lines.some(l => l.includes('still here')), false);
     assert.equal(digestDroppedReportMessages(next, next, '2026-07-19'), null);
+  });
+
+  it('memoryWhen never calls a purge-window stamp yesterday', () => {
+    // Live 2026-08-18: digest day was the write date, Aiden said "yesterday".
+    assert.equal(memoryWhen('2026-08-17', '2026-08-18'), 'earlier');
+    assert.equal(memoryWhen('2026-08-16', '2026-08-18'), 'earlier');
+    assert.equal(memoryWhen('2026-08-13', '2026-08-18'), 'on 2026-08-13');
+    assert.equal(memoryWhen('2026-08-12', '2026-08-18'), 'on 2026-08-12');
+    assert.equal(memoryWhen('', '2026-08-18'), 'earlier');
   });
 
   it('reportPreviewMessages: always last N including report posts (Coach chat)', () => {

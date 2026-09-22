@@ -21,7 +21,7 @@ export function mountFab(onClick) {
   const fab = document.createElement('button');
   fab.id = 'fab';
   fab.innerHTML = '<span class="fab-plus" aria-hidden="true"></span>';
-  fab.className = `fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full
+  fab.className = `fixed right-6 z-40 h-16 w-16 rounded-full
     shadow-lg shadow-accent/40`;
   fab.setAttribute('aria-label', 'Log an entry');
   fab.addEventListener('click', onClick);

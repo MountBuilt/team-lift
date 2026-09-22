@@ -32,9 +32,9 @@ test('buildContext: jobs, challenge, yesterday summary and pushes', () => {
   assert.deepEqual(ctx.yesterday.silent, ['Dave']);
   // Yesterday: Simon logged + ticked; Dave silent (not a challenge skip).
   assert.deepEqual(ctx.challengeYesterday.ticked, ['Simon']);
-  assert.deepEqual(ctx.challengeYesterday.skippedAmongLogged, []);
+  assert.equal(ctx.challengeYesterday.skippedAmongLogged, undefined);
   assert.ok(ctx.grace.challengeToday);
-  assert.ok(ctx.grace.challengeYesterday);
+  assert.equal(ctx.grace.challengeYesterday, undefined);
 
   assert.equal(ctx.pushes.length, 1);
   const p = ctx.pushes[0];
@@ -57,8 +57,27 @@ test('buildContext: challengeYesterday separates silent from logged-and-skipped'
     ]
   });
   assert.deepEqual(ctx.challengeYesterday.ticked, []);
-  assert.deepEqual(ctx.challengeYesterday.skippedAmongLogged, ['Dave']);
+  assert.equal(ctx.challengeYesterday.skippedAmongLogged, undefined);
   assert.deepEqual(ctx.yesterday.silent, ['Simon']);
+  assert.match(ctx.grace.challengeToday, /optional/i);
+});
+
+test('buildContext: benches a long absence and welcomes a new season', () => {
+  const ctx = buildContext({
+    ...base,
+    today: '2026-09-22',
+    challenge: { title: 'Show Up', startDate: '2026-09-21', endDate: '2026-10-18' },
+    entries: [
+      { id: 'u1_2026-09-21', userId: 'u1', name: 'Simon', date: '2026-09-21', steps: 4000, updatedAt: 'ts' },
+      { id: 'u2_2026-08-01', userId: 'u2', name: 'Dave', date: '2026-08-01', steps: 1000, updatedAt: 'ts' }
+    ],
+    banter: { ...banter, report: { day: '2026-09-06', text: 'old' } }
+  });
+  assert.equal(ctx.beat, 'welcome');
+  assert.match(ctx.beatNote, /do not recap the layoff/i);
+  assert.equal(ctx.voice.benchedCount, 1);
+  assert.equal(ctx.yesterday.silent.includes('Dave'), false);
+  assert.equal(JSON.stringify(ctx).includes('Dave'), false);
 });
 
 test('buildContext: no challengeYesterday when report is not wanted', () => {
@@ -322,8 +341,9 @@ test('copySchema is a strict object schema with no dynamic keys', () => {
 test('buildContext: Monday report is last week, mid-week is yesterday', () => {
   const monday = buildContext({ ...base, today: '2026-07-13', wantReport: true });
   assert.equal(monday.reportKind, 'week');
+  assert.equal(monday.beat, 'week');
   assert.ok(monday.lastWeek);
-  assert.ok(monday.grace.mondayReport);
+  assert.match(monday.grace.oneBeat, /one beat/i);
 
   const tue = buildContext({ ...base, today: '2026-07-14', wantReport: true });
   assert.equal(tue.reportKind, 'day');

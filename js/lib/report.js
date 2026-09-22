@@ -15,6 +15,7 @@ import { weeklyWorkoutCount } from './aggregate.js';
 import { challengeStreak } from './challenge.js';
 import { pickFrom, stepsComment, workoutsComment, weightComment } from './banter.js';
 import { lastWeekStandings } from './threads.js';
+import { reportBeat, voiceRoster } from './season.js';
 
 /** Signed change vs the most recent weigh-in strictly before `dateStr`, or null. */
 export function weightDelta(entries, userId, dateStr) {
@@ -93,35 +94,47 @@ const TURNOUT_LINES = {
  * (dead cron, first run, Mac asleep). Composes the existing per-section
  * template quips so the voice matches the AI report.
  */
-export function templateReport(entries, users, todayStr, challenge = null) {
-  if (todayStr === mondayOf(todayStr)) {
-    return templateWeekReport(entries, users, todayStr, challenge);
+function oneLoggedLine(member) {
+  if (member.workoutParts?.length) {
+    return `${member.name} logged ${member.workoutParts.join(' and ')} yesterday.`;
   }
+  if (typeof member.steps === 'number') {
+    return `${member.name} logged ${member.steps.toLocaleString('en-AU')} steps yesterday.`;
+  }
+  return `${member.name} showed up yesterday.`;
+}
+
+/**
+ * Offline morning line when the tick has not written one. One story.
+ * The snack is not prosecuted. A new season welcomes instead of recapping
+ * the gap. `snack` is accepted so older call sites keep working.
+ */
+export function templateReport(entries, users, todayStr, _snack = null, season = null) {
+  const beat = reportBeat({ today: todayStr, challenge: season, lastReportDay: null });
+  if (beat === 'welcome') {
+    const title = season?.title || 'New season';
+    return `${title}. Anything you log counts: a workout, a walk, a swim, or the snack if you want the streak. Four weeks. Put your name on the board.`;
+  }
+  if (beat === 'offweek') {
+    return 'Off week. The season is closed and the board is still open. Log anything and it still counts.';
+  }
+  if (beat === 'wait') {
+    return `Starts ${season?.startDate || 'soon'}. Log something anyway. It still counts.`;
+  }
+  const voice = voiceRoster(entries, users, todayStr);
   const sum = yesterdaySummary(entries, users, todayStr);
-  const monday = mondayOf(todayStr);
-  const seed = `report|${sum.date}`;
-
-  const ratio = sum.totalMembers === 0 ? 0 : sum.loggedCount / sum.totalMembers;
-  const band = ratio === 1 ? 'all' : ratio >= 0.5 ? 'most' : 'few';
-  const parts = [`${pickFrom(TURNOUT_LINES[band], seed)}`];
-
-  // Rotate which two of the three sections get a line, so it is not the same
-  // shape every morning.
-  const sections = [
-    () => workoutsComment(entries, users, monday, seed, todayStr),
-    () => stepsComment(entries, users, monday, seed, todayStr),
-    () => weightComment(entries, users, seed)
-  ];
-  const start = Math.abs(hash(seed)) % sections.length;
-  parts.push(sections[start]());
-  parts.push(sections[(start + 1) % sections.length]());
-
-  if (challenge) {
-    parts.push(sum.challengeTicks > 0
-      ? `${sum.challengeTicks} of you ticked the snack. Today it is ${challenge.reps} ${challenge.name}.`
-      : `Nobody ticked the snack yesterday. ${challenge.reps} ${challenge.name} today, no excuses.`);
+  const inPlay = new Set(voice.inPlay.map(p => p.name));
+  const showed = sum.members.filter(m => m.logged && inPlay.has(m.name));
+  if (showed.length >= 2 && beat === 'headtohead') {
+    return `${showed[0].name} and ${showed[1].name} both showed up yesterday. That is the pair to beat. Log something today.`;
   }
-  return parts.filter(Boolean).join(' ');
+  if (showed.length >= 1) {
+    return `${oneLoggedLine(showed[0])} One log is the whole story. Match it today.`;
+  }
+  if (voice.dare[0]) {
+    return `${voice.dare[0].name}, the board has been quiet without you. One log and you are back in it.`;
+  }
+  return 'Quiet one yesterday. Today is a new board. Log anything and it counts.';
 }
 
 function hash(s) {

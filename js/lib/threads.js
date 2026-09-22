@@ -9,7 +9,7 @@
 // * Thread replies under feed stay human-led only (parent is Aiden's voice).
 import { addDays, mondayOf, weekdayIndex, todayStr } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
-import { isBigEffort, hasAnyLog } from './banter.js';
+import { isBigEffort } from './banter.js';
 
 /** Card-style parents (not feed entry ids). Kept as an array so callers stay generic. */
 export const REPORT_TARGET = 'report';
@@ -33,8 +33,6 @@ export const THREAD_WINDOW_CHUNK = 20;
 /** Clip long report posts on the home preview (full text in expanded thread). */
 export const COACH_PREVIEW_TEXT_MAX = 180;
 export const MEMORY_KEEP = 14;
-/** Recent activity window size for feed line jobs (matches UI feed limit). */
-export const FEED_LINE_JOB_LIMIT = 12;
 /** Local HH:MM — first tick at or after this with reportDay !== today writes it. */
 export const DAILY_REPORT_AFTER = '03:00';
 
@@ -395,21 +393,13 @@ export function purgeStaleFeedThreads(threads, { today }) {
 }
 
 /**
- * Entries in the recent feed window that need an AI feed line.
- * @returns {object[]} entry objects (with id)
+ * Feed parents stay on the factual line. Batching AI captions over old logs
+ * was the canned voice (2026-09-22). Aiden speaks in coach chat, and under
+ * a log only after a human does. Existing feedLines age out via purge.
+ * Args kept so the tick call site does not change.
  */
-export function collectFeedLineJobs({ entries, feedLines, today, limit = FEED_LINE_JOB_LIMIT }) {
-  const map = feedLines || {};
-  const items = [...(entries || [])]
-    .filter(e => e?.id && hasAnyLog(e))
-    .sort((a, b) => (b.date === a.date
-      ? (b.updatedAt || 0) - (a.updatedAt || 0)
-      : (b.date < a.date ? -1 : 1)))
-    .slice(0, limit);
-  return items.filter(e => {
-    const text = map[e.id]?.text;
-    return !(typeof text === 'string' && text.trim());
-  });
+export function collectFeedLineJobs(_opts = {}) {
+  return [];
 }
 
 /** Drop feedLines whose entry date is older than FEED_THREAD_MAX_AGE_DAYS. */

@@ -24,7 +24,8 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
   const today = todayStr();
   const monday = mondayOf(today);
   const weekEnd = addDays(monday, 6);
-  // Weight chart: full challenge window. Entry list: this Mon–Sun only.
+  // Weight chart: every weigh-in, including after a season ends.
+  // Entry list: this Mon–Sun only.
   const allMine = entriesInWindow(state.entries, state.challenge)
     .filter(e => e.userId === me.id)
     .sort((a, b) => a.date < b.date ? 1 : -1);
@@ -63,7 +64,7 @@ export function renderMe(container, state, { onEdit, onLogout }, { animate = fal
           ${statTile(String(daysLogged), 'days logged')}
           ${statTile(compactNumber(stepsWeek), 'steps')}
           ${statTile(String(wkCount), 'workouts')}
-          ${statTile(streak > 0 ? String(streak) : '—', streak >= 2 ? `🔥 streak` : 'snack streak')}
+          ${statTile(streak > 0 ? String(streak) : '0', streak >= 2 ? `🔥 streak` : 'snack streak')}
         </div>
       </section>
       <section class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:2">

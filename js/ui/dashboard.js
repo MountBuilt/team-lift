@@ -3,7 +3,8 @@ import {
   dailyChallenge, challengeDoneOn, challengeStreak,
   challengeNudgeCard, challengeTickLabel, snackCrewLine
 } from '../lib/challenge.js';
-import { todayStr, mondayOf, weekNumber, totalWeeks, parseLocal } from '../lib/dates.js';
+import { todayStr, mondayOf } from '../lib/dates.js';
+import { seasonView } from '../lib/season.js';
 import {
   templateReport, reportFresh, reportIsUnseen, SEEN_REPORT_KEY
 } from '../lib/report.js';
@@ -15,7 +16,7 @@ import { shouldShowPushCoach, PUSH_COACH_KEY } from '../lib/push-coach.js';
 import { saveEntry } from '../firebase.js';
 import { pushSupported } from '../push.js';
 import { renderFeed } from './feed.js';
-import { esc } from '../lib/esc.js';
+import { esc, safeColor } from '../lib/esc.js';
 import { runCountUps, burstFrom } from './fx.js';
 import { threadBlockHtml, bindThreads } from './thread.js';
 import {
@@ -48,7 +49,8 @@ function reportCard(state, today) {
     if (!body) {
       body = templateReport(
         state.entries, state.users, today,
-        dailyChallenge(today, state.challenge.startDate)
+        dailyChallenge(today, state.challenge.startDate),
+        state.challenge
       );
     }
     lines = [{ kind: 'aiden', name: 'Aiden', text: body, role: 'report' }];
@@ -90,25 +92,62 @@ function reportCard(state, today) {
 }
 
 function headerHtml(c, today) {
-  const wk = weekNumber(today, c.startDate);
-  const total = totalWeeks(c.startDate, c.endDate);
-  const inWindow = today >= c.startDate && today <= c.endDate;
-  const totalDays = Math.round((parseLocal(c.endDate) - parseLocal(c.startDate)) / 86400000) + 1;
-  const dayN = Math.min(totalDays, Math.max(0,
-    Math.round((parseLocal(today) - parseLocal(c.startDate)) / 86400000) + 1));
-  const pct = Math.min(100, Math.max(0, (dayN / totalDays) * 100));
-  const sub = inWindow ? `WEEK ${wk} OF ${total}`
-    : (today < c.startDate ? `STARTS ${esc(c.startDate)}` : 'CHALLENGE FINISHED');
+  const view = seasonView([], [], c, today);
+  const live = view.phase === 'live';
+  const sub = live
+    ? `WEEK ${view.week} OF ${view.weeks}`
+    : (view.phase === 'before' ? `STARTS ${esc(c.startDate)}` : 'OFF WEEK');
+  const pct = live && view.totalDays
+    ? Math.min(100, Math.max(0, (view.dayN / view.totalDays) * 100))
+    : 0;
+  const bar = live
+    ? `<div class="mt-3 heatbar"><div class="heatbar-fill" style="width:${pct.toFixed(1)}%"></div></div>`
+    : '';
+  const foot = live
+    ? `<span>Day ${view.dayN} of ${view.totalDays}</span><span>${view.daysLeft} days left</span>`
+    : `<span>${view.phase === 'between' ? 'Log anything. It still counts.' : ''}</span><span></span>`;
   return `
     <header class="fx-card ember-bg px-1 pt-2" style="--fx-i:0">
       <p class="eyebrow">Team Lift · ${sub}</p>
       <h1 class="display text-[2.6rem] leading-none tracking-tight mt-1">${esc(c.title.toUpperCase())}</h1>
-      <div class="mt-3 heatbar"><div class="heatbar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      ${bar}
       <div class="mt-1.5 flex justify-between text-[11px] font-bold text-neutral-500">
-        <span>${inWindow ? `Day ${dayN} of ${totalDays}` : ''}</span>
-        <span>${inWindow ? `${totalDays - dayN} days left` : ''}</span>
+        ${foot}
       </div>
     </header>`;
+}
+
+function seasonCardHtml(state, today, fx) {
+  const view = seasonView(state.entries, state.users, state.challenge, today);
+  if (view.phase === 'before') {
+    return card(
+      `<h3 class="eyebrow">Next season</h3>
+       <p class="mt-1 text-sm text-neutral-300">Starts ${esc(view.start)}. Anything you log before then still sits on the board.</p>`,
+      fx
+    );
+  }
+  const eyebrow = view.phase === 'live' ? 'Days on the board' : 'Last season';
+  const note = view.phase === 'live'
+    ? 'Anything logged counts.'
+    : 'Closed. A log still counts.';
+  const best = view.members[0]?.days || 0;
+  const rows = view.members.map(m => {
+    const color = safeColor(state.users.find(u => u.id === m.userId)?.color);
+    const hot = best > 0 && m.days === best;
+    return `<div class="flex items-center justify-between gap-3 py-2 border-b border-edge/60 last:border-0">
+      <span class="truncate font-bold" style="color:${color}">${esc(m.name)}</span>
+      <span class="display text-xl leading-none ${hot ? 'text-accent' : 'text-neutral-500'}">${m.days}</span>
+    </div>`;
+  }).join('');
+  return card(
+    `<div class="mb-1 flex items-baseline justify-between gap-3">
+      <h3 class="eyebrow">${eyebrow}</h3>
+      <span class="text-xs font-bold text-neutral-500">${esc(note)}</span>
+    </div>
+    ${rows}`,
+    fx,
+    'season-card'
+  );
 }
 
 function isIosLike() {
@@ -208,7 +247,6 @@ function snackPairHtml(state, today, fx) {
   const ch = dailyChallenge(today, state.challenge.startDate);
   const me = state.currentUser;
   const meDone = challengeDoneOn(state.entries, today).includes(me.id);
-  if (today > state.challenge.endDate) return '';
   if (meDone && !(playSnackCollapse && !snackCollapsePainted)) {
     playSnackCollapse = false;
     return snackStripHtml(state, today, fx);
@@ -255,6 +293,7 @@ export function renderDashboard(container, state, {
   container.innerHTML = `
     <div class="${animate ? 'fx-on ' : ''}flex flex-col gap-3 px-4 pt-5 safe-bottom">
       ${headerHtml(c, today)}
+      ${seasonCardHtml(state, today, nextFx())}
       ${coach ? card(coach, nextFx(), 'push-coach-card border-edge') : ''}
       ${snackPairHtml(state, today, nextFx())}
       <section id="workouts-card" class="fx-card rounded-2xl bg-card border border-edge p-4" style="--fx-i:${nextFx()}">

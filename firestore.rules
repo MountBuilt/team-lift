@@ -14,6 +14,9 @@ service cloud.firestore {
       allow read, create, update: if true;
       allow delete: if false;
     }
+    // Resumed 2026-09-22. Pause (2026-08-28) denied banter/push so the tick
+    // 403'd before grok -p while the NUC was unreachable. Overlapping allows
+    // OR together, so a second deny match would not have worked.
     match /config/{docId} {
       allow read, create, update: if true;
       allow delete: if false;

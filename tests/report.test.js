@@ -61,19 +61,26 @@ test('yesterdaySummary never exposes an absolute weight', () => {
   assert.equal(json.includes('"weight"'), false);
 });
 
-test('templateReport is deterministic, mentions today\'s snack, and stays clean', () => {
+test('templateReport is one story and does not prosecute the snack', () => {
   const ch = dailyChallenge(TODAY, '2026-07-13');
   const a = templateReport(entries, users, TODAY, ch);
   const b = templateReport(entries, users, TODAY, ch);
   assert.equal(a, b, 'same day, same report');
-  assert.ok(a.length > 60);
-  assert.ok(a.includes(ch.name), 'names the exercise');
-  assert.ok(a.includes(String(ch.reps)), 'names the reps');
+  assert.ok(a.length > 40);
+  assert.equal(/nobody ticked/i.test(a), false);
   assert.equal(/—/.test(a), false, 'no em-dash');
   assert.equal(/\bgym\b/i.test(a), false, 'says workout, not gym');
   assert.equal(findAbsoluteWeight(a), null, 'no absolute weight');
-  assert.match(a, /week/i, 'Monday report covers the week that was');
   assert.ok(!/\bchallenge\b/i.test(a), 'says snack, not challenge');
+});
+
+test('templateReport welcomes a new season instead of recapping the layoff', () => {
+  const text = templateReport(entries, users, '2026-09-22', null, {
+    title: 'Show Up', startDate: '2026-09-21', endDate: '2026-10-18'
+  });
+  assert.match(text, /show up/i);
+  assert.equal(/layoff|zero logs|haven't/i.test(text), false);
+  assert.equal(/—/.test(text), false);
 });
 
 test('templateReport mid-week still covers yesterday', () => {

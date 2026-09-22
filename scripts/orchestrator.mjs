@@ -48,6 +48,7 @@ import {
   answeredThroughAt, scanMarkerAt
 } from '../js/lib/threads.js';
 import { mondayOf } from '../js/lib/dates.js';
+import { pushAllowed, resolveSeason } from '../js/lib/season.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -161,10 +162,15 @@ async function main() {
   }
 
   const threadJobs = collectThreadJobs({ threads, entries, today });
+  // Factual feed lines only. collectFeedLineJobs stays empty on purpose.
   const feedLineJobs = collectFeedLineJobs({
     entries, feedLines: feedLinesBase, today
   });
+  const season = resolveSeason(challengeCfg, today);
   const work = decidePushWork({ users, entries, pushState, now, today });
+  // A bloke gone 13+ days is off the lock screen until he logs.
+  work.morning = work.morning.filter(u => pushAllowed(entries, u.id, today));
+  work.evening = work.evening.filter(u => pushAllowed(entries, u.id, today));
 
   log(`report=${probe.wantReport} weekly=${probe.wantWeekly} threads=${threadJobs.length}` +
       `(${threadJobs.map(j => j.kind).join(',')}) feedLines=${feedLineJobs.length} ` +
@@ -203,7 +209,8 @@ async function main() {
     users,
     entries,
     banter: { ...banter, threads, memory, feedLines: feedLinesBase },
-    challengeStart: challengeCfg?.startDate ?? today,
+    challengeStart: season.startDate,
+    challenge: season,
     today,
     wantReport: probe.wantReport,
     wantWeekly: probe.wantWeekly,

@@ -16,10 +16,10 @@ const e = (userId, date, fields = {}) => ({
   weight: null, steps: null, workoutParts: null, updatedAt: 0, ...fields
 });
 
-test('entriesInWindow keeps pre-start entries, caps at challenge end', () => {
+test('entriesInWindow keeps pre-start entries and logs after the season ends', () => {
   const entries = [e('u1', '2026-07-05'), e('u1', '2026-07-06'), e('u1', '2026-08-02'), e('u1', '2026-08-03')];
   assert.deepEqual(entriesInWindow(entries, challenge).map(x => x.date),
-    ['2026-07-05', '2026-07-06', '2026-08-02']);
+    ['2026-07-05', '2026-07-06', '2026-08-02', '2026-08-03']);
 });
 
 test('chartWindow spans challenge when today is inside it', () => {
@@ -34,9 +34,9 @@ test('chartWindow starts early when today or entries precede the challenge', () 
     { start: '2026-06-30', end: '2026-07-02' });
 });
 
-test('chartWindow caps end at challenge end', () => {
+test('chartWindow keeps going after the season ends', () => {
   assert.deepEqual(chartWindow([], challenge, '2026-08-10'),
-    { start: '2026-07-06', end: '2026-08-02' });
+    { start: '2026-07-06', end: '2026-08-10' });
 });
 
 test('weightSeries returns each user\'s weigh-ins in kg, date-sorted', () => {
@@ -55,6 +55,12 @@ test('weightSeries returns each user\'s weigh-ins in kg, date-sorted', () => {
   ]);
   const alex = s.find(x => x.userId === 'u2');
   assert.deepEqual(alex.points, [{ date: '2026-07-08', kg: 80 }]);
+});
+
+test('weightSeries includes weigh-ins after the season ends', () => {
+  const s = weightSeries([e('u1', '2026-08-10', { weight: 90 })], users, challenge);
+  assert.equal(s.length, 1);
+  assert.deepEqual(s[0].points, [{ date: '2026-08-10', kg: 90 }]);
 });
 
 test('weightSeries includes pre-start weigh-ins', () => {

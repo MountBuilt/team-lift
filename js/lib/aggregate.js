@@ -4,17 +4,18 @@ import { hasAnyLog } from './banter.js';
 
 const hasWorkout = (entry) => Array.isArray(entry.workoutParts) && entry.workoutParts.length > 0;
 
-// Pre-start entries are kept so the app is fully usable before the challenge
-// begins; only the end is capped.
-export function entriesInWindow(entries, challenge) {
-  return entries.filter(e => e.date <= challenge.endDate);
+// History stays visible after a season ends. The season score is seasonView,
+// not a hard cut on the charts or the Me log. `challenge` remains in the
+// signature so callers do not change.
+export function entriesInWindow(entries, _challenge) {
+  return entries || [];
 }
 
-// Date span for time-axis charts: from the earliest of challenge start, today,
-// and any logged entry, up to today (capped at challenge end). Start is always
-// <= end, so dateRange over it is never empty.
+// Date span for time-axis charts: from the earliest of season start, today,
+// and any logged entry, up to today. A finished season does not freeze the
+// axis. Start is always <= end, so dateRange over it is never empty.
 export function chartWindow(entries, challenge, todayStr) {
-  const end = todayStr < challenge.endDate ? todayStr : challenge.endDate;
+  const end = todayStr;
   let start = challenge.startDate < end ? challenge.startDate : end;
   for (const e of entries) if (e.date < start) start = e.date;
   return { start, end };

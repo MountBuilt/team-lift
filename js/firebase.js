@@ -4,6 +4,8 @@ import {
   collection, doc, onSnapshot, setDoc, addDoc, serverTimestamp, FieldPath, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { firebaseConfig } from './config.js';
+import { resolveSeason } from './lib/season.js';
+import { todayStr } from './lib/dates.js';
 
 const app = initializeApp(firebaseConfig);
 // IndexedDB persistence: repeat visits paint instantly from the local cache
@@ -34,7 +36,10 @@ export function subscribeAll(onChange) {
       emit();
     }),
     onSnapshot(doc(db, 'config', 'challenge'), (snap) => {
-      data.challenge = snap.exists() ? snap.data() : null;
+      // Bundled season covers a finished config/challenge until a later
+      // season is written. Charts and the snack no longer die on endDate.
+      const remote = snap.exists() ? snap.data() : null;
+      data.challenge = resolveSeason(remote, todayStr());
       emit();
     }),
     // Daily AI-written banter (written by the local refresh-banter cron job);

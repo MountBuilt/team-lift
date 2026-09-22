@@ -11,7 +11,7 @@
 // ever put in the context, only signed deltas, so Aiden cannot publish "glued
 // to 80" even if he wanted to. validateCopy keeps a regex backstop.
 import { dailyChallenge, challengeStreak } from '../../js/lib/challenge.js';
-import { addDays, mondayOf } from '../../js/lib/dates.js';
+import { addDays } from '../../js/lib/dates.js';
 import { restDayStatus, displayFeedLine, factualFeedLine, isBigEffort } from '../../js/lib/banter.js';
 import { yesterdaySummary, weightDelta } from '../../js/lib/report.js';
 import {
@@ -19,6 +19,7 @@ import {
   memoryWhen
 } from '../../js/lib/threads.js';
 import { STORYLINES, activeStorylines } from '../storylines.mjs';
+import { BEAT_NOTES, reportBeat, seasonView, voiceRoster } from '../../js/lib/season.js';
 
 export const REPORT_MAX = 700;
 export const PUSH_TITLE_MAX = 50;
@@ -188,15 +189,44 @@ export function resolveMood(previous, opts = {}) {
  * @param {object[]} opts.evening     users due an evening push
  * @param {object}   [opts.previousMood] persisted mood from config/banter
  */
+function stripStandings(standings, hidden) {
+  if (!standings) return standings;
+  const members = standings.members.filter(m => !hidden.has(m.name));
+  return {
+    ...standings,
+    members,
+    teamWorkouts: members.reduce((s, m) => s + m.workouts, 0),
+    teamSteps: members.reduce((s, m) => s + m.steps, 0),
+    membersAt3: members.filter(m => m.workouts >= 3).length
+  };
+}
+
+function stripSummary(summary, hidden) {
+  if (!summary) return summary;
+  const members = summary.members.filter(m => !hidden.has(m.name));
+  return {
+    ...summary,
+    members,
+    silent: summary.silent.filter(n => !hidden.has(n)),
+    totalMembers: members.length,
+    loggedCount: members.filter(m => m.logged).length
+  };
+}
+
 export function buildContext({
-  users, entries, banter, challengeStart, today,
+  users, entries, banter, challengeStart, challenge = null, today,
   wantReport = false, wantWeekly = false, threadJobs = [], feedLineJobs = [],
   morning = [], evening = [], previousMood = null
 }) {
-  const monday = mondayOf(today);
   const yesterday = addDays(today, -1);
   const loggedOn = (userId, date) =>
     entries.some(e => e.userId === userId && e.date === date);
+  const seasonCfg = challenge?.startDate
+    ? challenge
+    : (challengeStart ? { startDate: challengeStart } : null);
+  const voice = voiceRoster(entries, users, today);
+  const hidden = new Set([...voice.dare, ...voice.benched].map(x => x.name));
+  const namedUsers = users.filter(u => !hidden.has(u.name));
 
   const jobs = [];
   if (wantReport) jobs.push('report');
@@ -261,19 +291,26 @@ export function buildContext({
     };
   };
 
-  const todayChallenge = dailyChallenge(today, challengeStart);
+  const snackStart = seasonCfg?.startDate || challengeStart;
+  const todayChallenge = dailyChallenge(today, snackStart);
   const yDay = addDays(today, -1);
-  const yChallenge = dailyChallenge(yDay, challengeStart);
-  const ySummary = wantReport ? yesterdaySummary(entries, users, today) : null;
-  // Who actually faced yesterday's challenge (logged that day). Silent blokes
-  // did not "avoid" the exercise; they simply did not log.
+  const yChallenge = dailyChallenge(yDay, snackStart);
+  const ySummary = wantReport ? stripSummary(yesterdaySummary(entries, users, today), hidden) : null;
+  // Snack ticks are colour for the one beat. Skips are not handed over.
+  // A silent bloke did not "avoid" the exercise.
   const yLogged = ySummary ? ySummary.members.filter(m => m.logged) : [];
   const challengeYesterday = wantReport ? {
     ...yChallenge,
     date: yDay,
-    ticked: yLogged.filter(m => m.dailyChallenge).map(m => m.name),
-    skippedAmongLogged: yLogged.filter(m => !m.dailyChallenge).map(m => m.name)
+    ticked: yLogged.filter(m => m.dailyChallenge).map(m => m.name)
   } : null;
+  const beat = reportBeat({
+    today,
+    challenge: seasonCfg,
+    lastReportDay: banter?.report?.day || null,
+    lastReportText: banter?.report?.text || ''
+  });
+  const view = seasonView(entries, users, seasonCfg, today);
 
   const mood = resolveMood(previousMood || banter?.mood, {
     wantReport,
@@ -293,25 +330,39 @@ export function buildContext({
     mood,
     // TODAY's invitation only. Nobody has completed or failed it yet at report
     // time (same-day grace). Do not name anyone as avoiding this exercise.
+    beat,
+    beatNote: BEAT_NOTES[beat] || '',
+    // Clock only. The days table is on the home screen. Do not recite it.
+    season: {
+      phase: view.phase,
+      title: view.title,
+      week: view.week,
+      weeks: view.weeks,
+      dayN: view.dayN,
+      daysLeft: view.daysLeft
+    },
+    voice: {
+      inPlay: voice.inPlay,
+      dare: voice.dare,
+      benchedCount: voice.benched.length
+    },
     challenge: {
       ...todayChallenge,
-      note: 'Invitation for everyone today. Nobody has done or skipped it yet. Call it a snack. Never say a bloke avoided, skipped, or failed this snack.'
+      note: 'Optional side streak. Call it a snack, never a challenge. Mention it only if it serves the one beat. Never prosecute a skip. Never say a bloke avoided, skipped, or failed this snack. Today is not over.'
     },
-    // Completed-day snack results. Roast skips only from skippedAmongLogged.
     challengeYesterday,
-    reportKind: wantReport && today === mondayOf(today) ? 'week' : 'day',
-    // The morning report may ONLY talk about this on Tue-Sun. Monday uses lastWeek.
+    reportKind: beat === 'week' ? 'week' : 'day',
     yesterday: ySummary,
-    thisWeek: thisWeekStandings(entries, users, today),
-    lastWeek: lastWeekStandings(entries, users, today),
+    thisWeek: stripStandings(thisWeekStandings(entries, namedUsers, today), hidden),
+    lastWeek: stripStandings(lastWeekStandings(entries, namedUsers, today), hidden),
     grace: {
       sameDay: 'Today is never a missed, lazy, skipped or rest day. The boys have until midnight to log. Only judge inactivity on completed days. The evening push is pure encouragement, never a roast for not logging today.',
-      restDays: '1-2 consecutive empty completed days is a legit rest day, leave the bloke alone about it. 3 or more in a row is fair game.',
-      challengeToday: 'context.challenge is TODAY only: name the exercise and reps as a pull for everyone. Call it a snack, never a challenge. Never claim anyone avoided, skipped, dodged or failed it. A bloke who has not logged today is not avoiding the snack; the day is not over.',
-      challengeYesterday: 'Only challengeYesterday.skippedAmongLogged may be roasted for skipping the snack, and only for YESTERDAY\'s exercise/reps. Silent blokes (yesterday.silent) missed the whole day, not specifically the snack. Do not mix today\'s exercise name with yesterday\'s skips.',
-      mondayReport: 'On Monday, reportKind is week. Cover lastWeek (the week that was). Do not write a yesterday-only daily update.'
+      restDays: '1-2 consecutive empty completed days is a legit rest day, leave him alone. 3 to 9 is fair game. voice.dare (10-12 empty days) gets one welcome back, not a roast. Names in voice.benched are not spoken until they log.',
+      challengeToday: 'The snack is optional. The season score is any log at all. Do not build the report around who skipped the snack.',
+      bench: 'Do not name voice.benched. One welcome-back line for voice.dare at most, and only if the beat has room.',
+      oneBeat: 'Write the one beat in beatNote. A report that covers standings, a sledge, and the snack has failed.'
     },
-    users: users.map(u => ({ id: u.id, name: u.name })),
+    users: namedUsers.map(u => ({ id: u.id, name: u.name })),
     storylines: activeStorylines(STORYLINES, today)
       .map(s => ({ id: s.id, subject: s.subject, until: s.until, note: s.note })),
     previousReport: banter?.report?.text ?? null,

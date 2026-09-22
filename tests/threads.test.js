@@ -660,18 +660,17 @@ describe('continuous report thread', () => {
 });
 
 describe('feedLines helpers', () => {
-  it('collectFeedLineJobs returns entries missing AI text in the window', () => {
+  it('collectFeedLineJobs stays empty so old logs keep the factual line', () => {
     const entries = [
       { id: 'u_2026-07-19', userId: 'u', name: 'Dan', date: '2026-07-19', steps: 1000 },
-      { id: 'u_2026-07-18', userId: 'u', name: 'Dan', date: '2026-07-18', workoutParts: ['legs'] },
-      { id: 'u_2026-07-17', userId: 'u', name: 'Dan', date: '2026-07-17' } // no log
+      { id: 'u_2026-07-18', userId: 'u', name: 'Dan', date: '2026-07-18', workoutParts: ['legs'] }
     ];
     const jobs = collectFeedLineJobs({
       entries,
-      feedLines: { 'u_2026-07-18': { text: 'already', at: 't' } },
+      feedLines: {},
       today: '2026-07-19'
     });
-    assert.deepEqual(jobs.map(e => e.id), ['u_2026-07-19']);
+    assert.deepEqual(jobs, []);
   });
 
   it('purgeStaleFeedLines and feedLineWritePlan', () => {

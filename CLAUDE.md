@@ -73,9 +73,9 @@ when orchestrator/watcher code changed.
 - Peer reactions live on `entries/{id}.reactions` as `{ [userId]: emoji }`
   (fixed set 🔥💀👏😂), written with FieldPath per user. Client-only; no tick
   involvement. Weekly awards are pure client functions over Mon–Sun.
-- No standalone weekly recap card. Monday's morning report covers last week
-  (`reportKind: 'week'`, `lastWeek` standings). Tue–Sun reports stay yesterday
-  only. `needsWeeklyReport` is always false. Spec:
+- No standalone weekly recap card. Monday's morning report is one story from
+  last week (`beat: 'week'`), unless that morning is the season welcome or
+  the off-week. `needsWeeklyReport` is always false. Spec:
   `docs/superpowers/specs/2026-08-16-dash-home-design.md`.
 - **Never publish an absolute weight in kg.** Deltas and trends only, in the
   charts and in the banter. The copywriter context carries `weightDelta` and
@@ -95,6 +95,8 @@ when orchestrator/watcher code changed.
   and can go down or up day to day. Ticking it writes `dailyChallenge: true`
   on that day's entry doc; streaks are consecutive ticked days. UI and
   Aiden copy say **snack**, never challenge, for this daily exercise.
+  It is an optional side streak, still on the dash after a season ends.
+  The season score is any log. Aiden does not prosecute snack skips.
 - Team weight chart plots actual kg but keeps exact values obscured: no
   y-axis numbers, tooltips show change vs first weigh-in (never absolute kg).
 - Log sheet day picker: `dayOptions()` in `js/lib/dates.js` offers today,
@@ -119,10 +121,10 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   `docs/superpowers/specs/2026-08-16-dash-home-design.md`.
   Sticky top nav uses `.safe-top` (`env(safe-area-inset-top)`) so PWA tabs
   stay tappable under the notch (`black-translucent` + `viewport-fit=cover`).
-- **Recent activity is AI.** Client shows `factualFeedLine(entry)` until the
-  tick writes `config/banter.feedLines[entryId] = { text, at }`, then that
-  line sticks (no re-roll on edit). Never fall back to stacked pep-suffix
-  templates. Max 200 chars; no absolute kg.
+- **Recent activity stays factual.** `factualFeedLine(entry)` is the parent.
+  `collectFeedLineJobs` returns nothing (2026-09-22): batching AI captions
+  over old logs was the canned voice. A stored `feedLines[entryId]` still
+  displays until purge, then the factual line remains. No absolute kg.
 - **Aiden reacts as a comment only when spoken to (2026-08-02).** Parent is
   Aiden's voice again, so unprompted feed praise stays off. `collectThreadJobs`
   is human-led only.
@@ -146,9 +148,18 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   chunk 20). Empty thread falls back to `banter.report` / `templateReport` as a
   synthetic preview only (not written). Weekly recap still separate and
   wipe-on-rewrite. Do NOT put coach lines back on chart cards.
-- **Today's challenge is invitation-only in the report.** Context hands
-  `challenge` (today) + `challengeYesterday` (ticked / skippedAmongLogged).
-  Never claim someone avoided today's exercise; same-day grace applies.
+- **Today's snack is optional colour.** Context hands `challenge` (today)
+  and who ticked yesterday. It does not hand a skip list. Never claim
+  someone avoided today's snack. The morning job is `context.beat` (one
+  story). A welcome on the first report of a season does not recap the
+  layoff. Names in a 13-day absence are omitted (`voice.benchedCount`);
+  days 10-12 are one welcome-back dare. Lock-screen pushes stop at 13
+  days (`pushAllowed`).
+- **Seasons** (`js/lib/season.js`): score is days with anything logged.
+  `BUNDLED_SEASON` covers a finished `config/challenge` until a later
+  season is stored. Between seasons the header says off week, charts and
+  Me keep moving, the snack stays. `resolveSeason` is what the client and
+  the tick both use.
 - **Week scope:** weekly standings from precomputed `thisWeek` (Mon–Sun) only.
 - **Threads** live on `config/banter.threads`:
   - Keys: `report` | `weekly` | `{entryId}` for feed rows.
@@ -190,15 +201,17 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   closed** and **cwd off-repo** (else the coding agent loads project
   CLAUDE.md / AGENTS.md and the call more than doubles).
 - **Voice guide:** `scripts/prompt/aiden.md`. Two things it must keep:
-  - The **locker-room register** (soft-sexist harden-up, innuendo, camp) with a
-    few calibration examples. This is wanted, not tolerated. It was cut once
-    during a prompt slim and the copy immediately went flat.
-  - The rule that a report which is only a standings recap has **failed** —
-    without it the model writes accurate scoreboard prose and no jokes.
-  What it must NOT grow back into is the old 394-line, 28.8 KB skill: a bank of
-  24 numbered joke shapes plus a 40-row nickname table made the copy MORE
-  formulaic, because the model worked through the list instead of reacting to
-  the data. Examples to calibrate voice, yes; a menu to rotate, no.
+  - The **locker-room register** (soft-sexist harden-up, innuendo, camp),
+    described, not quoted. This is wanted, not tolerated. Cutting the
+    register made the copy flat. Pasting example jokes made it canned.
+  - The rule that a report which is only a standings recap has **failed**.
+    One beat (`context.beat`) is the whole morning job.
+  What it must NOT grow back into is a menu. The 394-line skill did that
+  with 24 joke shapes, and the shorter prompt did it again when the
+  calibration examples (mittens, manicure, soap) started coming out
+  verbatim. Describe the register. Do not leave lines he can paste.
+  The morning report follows `context.beat` and does not also recite
+  standings, land a set-piece sledge, and name the snack.
 - Pure helpers: `js/lib/threads.js`, `js/lib/report.js` (+ tests).
   Orchestrator: `scripts/orchestrator.mjs`. Context/validate:
   `scripts/lib/context.mjs`.

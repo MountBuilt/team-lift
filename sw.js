@@ -2,7 +2,7 @@
 // assets so opens are near-instant. After a deploy, a user's first open may
 // serve the previous version; the refreshed copy lands on the next open.
 // Firestore/live data (anything on *.googleapis.com) is never intercepted.
-const CACHE = 'teamlift-v5'; // feed name+line inline; my entries this week only
+const CACHE = 'teamlift-v6'; // Show Up season shell
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -18,6 +18,8 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.hostname.endsWith('googleapis.com')) return;
+  // Never serve a stale worker. A cached sw.js hides the next deploy.
+  if (url.pathname.endsWith('/sw.js')) return;
   event.respondWith(staleWhileRevalidate(event.request));
 });
 

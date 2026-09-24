@@ -81,11 +81,11 @@ test('moodFromEvent: evening-only is affectionate', () => {
   assert.equal(mood.name, 'affectionate');
 });
 
-test('moodFromEvent: a big-effort feed line is grandiose', () => {
+test('moodFromEvent: a big-effort feed line is wired, not a coach sermon', () => {
   const mood = moodFromEvent({
     feedLineJobs: [{ id: 'e1', steps: 18000 }]
   });
-  assert.equal(mood.name, 'grandiose');
+  assert.equal(mood.name, 'wired');
 });
 
 test('moodFromEvent: a human thread is banter, never combative', () => {

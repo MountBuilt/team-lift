@@ -660,17 +660,31 @@ describe('continuous report thread', () => {
 });
 
 describe('feedLines helpers', () => {
-  it('collectFeedLineJobs stays empty so old logs keep the factual line', () => {
+  it('collectFeedLineJobs captions one fresh log and leaves the old ones factual', () => {
     const entries = [
-      { id: 'u_2026-07-19', userId: 'u', name: 'Dan', date: '2026-07-19', steps: 1000 },
-      { id: 'u_2026-07-18', userId: 'u', name: 'Dan', date: '2026-07-18', workoutParts: ['legs'] }
+      { id: 'u_2026-09-24', userId: 'u', name: 'Simon', date: '2026-09-24', workoutParts: ['chest'], updatedAt: 2 },
+      { id: 'u_2026-09-23', userId: 'v', name: 'Hunt', date: '2026-09-23', steps: 8000, updatedAt: 1 },
+      { id: 'u_2026-09-20', userId: 'u', name: 'Simon', date: '2026-09-20', workoutParts: ['legs'], updatedAt: 9 },
+      { id: 'u_2026-09-24b', userId: 'w', name: 'Dan', date: '2026-09-24', steps: 1000, updatedAt: 3 }
     ];
     const jobs = collectFeedLineJobs({
       entries,
-      feedLines: {},
-      today: '2026-07-19'
+      feedLines: { 'u_2026-09-24b': { text: 'already', at: 't' } },
+      today: '2026-09-24'
     });
-    assert.deepEqual(jobs, []);
+    assert.deepEqual(jobs.map(e => e.id), ['u_2026-09-24']);
+  });
+
+  it('collectFeedLineJobs still takes yesterday when nothing fresher is waiting', () => {
+    const jobs = collectFeedLineJobs({
+      entries: [
+        { id: 'u_2026-09-23', userId: 'u', name: 'Simon', date: '2026-09-23', steps: 4000, updatedAt: 1 },
+        { id: 'u_2026-09-22', userId: 'u', name: 'Simon', date: '2026-09-22', steps: 4000, updatedAt: 2 }
+      ],
+      feedLines: {},
+      today: '2026-09-24'
+    });
+    assert.deepEqual(jobs.map(e => e.id), ['u_2026-09-23']);
   });
 
   it('purgeStaleFeedLines and feedLineWritePlan', () => {

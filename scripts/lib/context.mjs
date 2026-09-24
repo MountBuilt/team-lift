@@ -121,8 +121,9 @@ function pickMoodName(opts = {}) {
   }
 
   if (hasFeed) {
+    // Grandiose on a feed line turned into "greatest coach" captions.
     if ((opts.feedLineJobs || []).some(e => e.bigEffort === true || isBigEffort(e))) {
-      return 'grandiose';
+      return 'wired';
     }
     return 'dry';
   }

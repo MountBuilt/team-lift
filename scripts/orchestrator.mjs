@@ -162,7 +162,7 @@ async function main() {
   }
 
   const threadJobs = collectThreadJobs({ threads, entries, today });
-  // Factual feed lines only. collectFeedLineJobs stays empty on purpose.
+  // One fresh feed caption (today or yesterday). Older logs stay factual.
   const feedLineJobs = collectFeedLineJobs({
     entries, feedLines: feedLinesBase, today
   });

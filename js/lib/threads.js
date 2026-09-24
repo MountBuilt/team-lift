@@ -9,7 +9,7 @@
 // * Thread replies under feed stay human-led only (parent is Aiden's voice).
 import { addDays, mondayOf, weekdayIndex, todayStr } from './dates.js';
 import { weeklyWorkoutCount } from './aggregate.js';
-import { isBigEffort } from './banter.js';
+import { hasAnyLog, isBigEffort } from './banter.js';
 
 /** Card-style parents (not feed entry ids). Kept as an array so callers stay generic. */
 export const REPORT_TARGET = 'report';
@@ -392,14 +392,28 @@ export function purgeStaleFeedThreads(threads, { today }) {
   return next;
 }
 
+/** One fresh caption per tick. A batch over old logs was the canned voice. */
+export const FEED_LINE_JOB_LIMIT = 1;
+/** Today and yesterday only. Older rows keep the factual line. */
+export const FEED_LINE_FRESH_DAYS = 1;
+
 /**
- * Feed parents stay on the factual line. Batching AI captions over old logs
- * was the canned voice (2026-09-22). Aiden speaks in coach chat, and under
- * a log only after a human does. Existing feedLines age out via purge.
- * Args kept so the tick call site does not change.
+ * The single newest log from today or yesterday that still has no AI line.
+ * A fortnight of missing captions must not be written in one mood.
  */
-export function collectFeedLineJobs(_opts = {}) {
-  return [];
+export function collectFeedLineJobs({ entries, feedLines, today, limit = FEED_LINE_JOB_LIMIT } = {}) {
+  const map = feedLines || {};
+  const oldest = addDays(today, -FEED_LINE_FRESH_DAYS);
+  return [...(entries || [])]
+    .filter(e => e?.id && e.date >= oldest && e.date <= today && hasAnyLog(e))
+    .filter(e => {
+      const text = map[e.id]?.text;
+      return !(typeof text === 'string' && text.trim());
+    })
+    .sort((a, b) => (b.date === a.date
+      ? (b.updatedAt || 0) - (a.updatedAt || 0)
+      : (b.date < a.date ? -1 : 1)))
+    .slice(0, limit);
 }
 
 /** Drop feedLines whose entry date is older than FEED_THREAD_MAX_AGE_DAYS. */

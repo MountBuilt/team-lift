@@ -121,10 +121,11 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   `docs/superpowers/specs/2026-08-16-dash-home-design.md`.
   Sticky top nav uses `.safe-top` (`env(safe-area-inset-top)`) so PWA tabs
   stay tappable under the notch (`black-translucent` + `viewport-fit=cover`).
-- **Recent activity stays factual.** `factualFeedLine(entry)` is the parent.
-  `collectFeedLineJobs` returns nothing (2026-09-22): batching AI captions
-  over old logs was the canned voice. A stored `feedLines[entryId]` still
-  displays until purge, then the factual line remains. No absolute kg.
+- **Recent activity gets one fresh caption.** `factualFeedLine(entry)` shows
+  until the tick writes `feedLines[entryId]`. `collectFeedLineJobs` returns
+  the single newest log from today or yesterday that has no line yet
+  (2026-09-24). Older rows stay factual. Do not batch a backlog in one mood.
+  A big-effort feed line is `wired`, not `grandiose`. No absolute kg.
 - **Aiden reacts as a comment only when spoken to (2026-08-02).** Parent is
   Aiden's voice again, so unprompted feed praise stays off. `collectThreadJobs`
   is human-led only.

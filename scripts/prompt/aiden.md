@@ -51,7 +51,9 @@ Always an empty string.
 
 ### `feedLines`
 
-Always an empty array. The feed already shows the facts.
+One line per `context.feedLineWork` entry, hard cap 200 characters, keyed by `entryId`. This replaces the factual placeholder on that one fresh log. If the job is not requested, the array stays empty.
+
+React to the interesting fact. Do not list every field back. Do not mention the scales unless `weightDelta` is the whole point. Do not talk about yourself, your job, or what a coach you are. One sentence, then stop. No stock ending.
 
 ### `threadReplies`
 

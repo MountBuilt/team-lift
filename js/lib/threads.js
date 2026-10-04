@@ -8,7 +8,7 @@
 // * Feed parents: factual placeholder then AI in config/banter.feedLines.
 // * Thread replies under feed stay human-led only (parent is Aiden's voice).
 import { addDays, mondayOf, weekdayIndex, todayStr } from './dates.js';
-import { weeklyWorkoutCount } from './aggregate.js';
+import { weeklyWorkoutCount, FEED_VISIBLE_LIMIT } from './aggregate.js';
 import { hasAnyLog, isBigEffort } from './banter.js';
 
 /** Card-style parents (not feed entry ids). Kept as an array so callers stay generic. */
@@ -22,6 +22,13 @@ export const AIDEN_MSG_MAX = 240;
 /** AI feed parent line max (shorter than thread replies). */
 export const FEED_LINE_MAX = 200;
 export const FEED_THREAD_MAX_AGE_DAYS = 3;
+/**
+ * Recent activity shows the newest FEED_VISIBLE_LIMIT logs, which on a quiet
+ * board are older than 3 days. Purging captions on the 3-day clock blanked
+ * every Aiden line still on screen (2026-10-04). Keep a caption or a feed
+ * thread while its row is in that list. The date rule remains the fallback
+ * when the tick has no entry roster.
+ */
 /** Continuous morning-report thread message retention. */
 export const REPORT_THREAD_MAX_AGE_DAYS = 5;
 /** Home Coach chat card: always the latest N visible messages. */
@@ -380,49 +387,59 @@ export function purgeReportThreadMessages(threads, { today }) {
  * Drop feed threads older than FEED_THREAD_MAX_AGE_DAYS. Date is the only test
  * (entry id suffix). Does not touch report/weekly.
  */
-export function purgeStaleFeedThreads(threads, { today }) {
-  const next = { ...(threads || {}) };
-  const oldest = addDays(today, -FEED_THREAD_MAX_AGE_DAYS);
-  for (const key of Object.keys(next)) {
-    if (CARD_TARGETS.includes(key)) continue;
-    // entry ids are `{userId}_{YYYY-MM-DD}`
-    const datePart = key.includes('_') ? key.slice(key.lastIndexOf('_') + 1) : '';
-    if (datePart && datePart < oldest) delete next[key];
-  }
-  return next;
-}
-
-/** One fresh caption per tick. A batch over old logs was the canned voice. */
-export const FEED_LINE_JOB_LIMIT = 1;
-/** Today and yesterday only. Older rows keep the factual line. */
-export const FEED_LINE_FRESH_DAYS = 1;
-
-/**
- * The single newest log from today or yesterday that still has no AI line.
- * A fortnight of missing captions must not be written in one mood.
- */
-export function collectFeedLineJobs({ entries, feedLines, today, limit = FEED_LINE_JOB_LIMIT } = {}) {
-  const map = feedLines || {};
-  const oldest = addDays(today, -FEED_LINE_FRESH_DAYS);
+export function visibleFeedEntries(entries, limit = FEED_VISIBLE_LIMIT) {
   return [...(entries || [])]
-    .filter(e => e?.id && e.date >= oldest && e.date <= today && hasAnyLog(e))
-    .filter(e => {
-      const text = map[e.id]?.text;
-      return !(typeof text === 'string' && text.trim());
-    })
+    .filter(e => e?.id)
     .sort((a, b) => (b.date === a.date
       ? (b.updatedAt || 0) - (a.updatedAt || 0)
       : (b.date < a.date ? -1 : 1)))
     .slice(0, limit);
 }
 
-/** Drop feedLines whose entry date is older than FEED_THREAD_MAX_AGE_DAYS. */
-export function purgeStaleFeedLines(feedLines, { today }) {
-  const next = { ...(feedLines || {}) };
+function feedRowStillVisible(key, entries, today) {
+  if (entries) return visibleFeedEntries(entries).some(e => e.id === key);
   const oldest = addDays(today, -FEED_THREAD_MAX_AGE_DAYS);
+  const datePart = key.includes('_') ? key.slice(key.lastIndexOf('_') + 1) : '';
+  return !datePart || datePart >= oldest;
+}
+
+export function purgeStaleFeedThreads(threads, { today, entries } = {}) {
+  const next = { ...(threads || {}) };
   for (const key of Object.keys(next)) {
-    const datePart = key.includes('_') ? key.slice(key.lastIndexOf('_') + 1) : '';
-    if (datePart && datePart < oldest) delete next[key];
+    if (CARD_TARGETS.includes(key)) continue;
+    if (!feedRowStillVisible(key, entries, today)) delete next[key];
+  }
+  return next;
+}
+
+/** One fresh caption per tick. A batch over old logs was the canned voice. */
+export const FEED_LINE_JOB_LIMIT = 1;
+
+/**
+ * The single newest log still on Recent activity that has no AI line.
+ * One per tick, newest first, so a wiped board refills without one mood
+ * writing the whole list. Rows that have left the visible feed are not queued.
+ */
+export function collectFeedLineJobs({ entries, feedLines, today, limit = FEED_LINE_JOB_LIMIT } = {}) {
+  const map = feedLines || {};
+  return visibleFeedEntries(entries)
+    .filter(e => hasAnyLog(e))
+    .filter(e => feedRowStillVisible(e.id, entries, today))
+    .filter(e => {
+      const text = map[e.id]?.text;
+      return !(typeof text === 'string' && text.trim());
+    })
+    .slice(0, limit);
+}
+
+/**
+ * Drop feedLines for logs that are no longer on Recent activity.
+ * Pass `entries` so a quiet board keeps captions older than 3 days.
+ */
+export function purgeStaleFeedLines(feedLines, { today, entries } = {}) {
+  const next = { ...(feedLines || {}) };
+  for (const key of Object.keys(next)) {
+    if (!feedRowStillVisible(key, entries, today)) delete next[key];
   }
   return next;
 }

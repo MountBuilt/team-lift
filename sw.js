@@ -2,7 +2,7 @@
 // assets so opens are near-instant. After a deploy, a user's first open may
 // serve the previous version; the refreshed copy lands on the next open.
 // Firestore/live data (anything on *.googleapis.com) is never intercepted.
-const CACHE = 'teamlift-v6'; // Show Up season shell
+const CACHE = 'teamlift-v7'; // coach scroll handoff + feed captions follow the visible rows
 
 self.addEventListener('install', () => self.skipWaiting());
 

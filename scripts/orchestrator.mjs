@@ -135,14 +135,14 @@ async function main() {
   // Threads before Aiden speaks: purge stale feed threads + old report messages.
   // Weekly still digests+wipes. Report is continuous (no wipe).
   const buildThreads = (raw) => {
-    let t = purgeStaleFeedThreads(raw || {}, { today });
+    let t = purgeStaleFeedThreads(raw || {}, { today, entries });
     t = purgeReportThreadMessages(t, { today });
     if (probe.wantWeekly) t = wipeCardThreads(t, [WEEKLY_TARGET]);
     return t;
   };
   const rawThreads = banter?.threads || {};
   const threads = buildThreads(rawThreads);
-  const feedLinesBase = purgeStaleFeedLines(banter?.feedLines || {}, { today });
+  const feedLinesBase = purgeStaleFeedLines(banter?.feedLines || {}, { today, entries });
 
   let memory = trimMemory(banter?.memory || []);
   const droppedCoach = digestDroppedReportMessages(rawThreads, threads, today);
@@ -162,7 +162,7 @@ async function main() {
   }
 
   const threadJobs = collectThreadJobs({ threads, entries, today });
-  // One fresh feed caption (today or yesterday). Older logs stay factual.
+  // One caption for the newest visible log that does not have one yet.
   const feedLineJobs = collectFeedLineJobs({
     entries, feedLines: feedLinesBase, today
   });
@@ -258,7 +258,7 @@ async function main() {
 
   const plan = threadWritePlan(fresh?.threads || {}, nextThreads);
 
-  let nextFeedLines = purgeStaleFeedLines(fresh?.feedLines || banter?.feedLines || {}, { today });
+  let nextFeedLines = purgeStaleFeedLines(fresh?.feedLines || banter?.feedLines || {}, { today, entries });
   for (const row of copy.feedLines || []) {
     const id = row?.entryId;
     const text = String(row?.text || '').trim();

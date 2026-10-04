@@ -169,10 +169,13 @@ export function teamTiles(entries, users, mondayStr) {
   return { totalWorkouts, membersAt3, totalMembers: users.length, totalSteps };
 }
 
+/** How many logs Recent activity paints. Captions live as long as the row does. */
+export const FEED_VISIBLE_LIMIT = 12;
+
 // Newest `limit` entries by (date DESC, updatedAt DESC), grouped into day
 // buckets in that same order. Sorting by date first (not just updatedAt)
 // means a backdated entry rises to the top of ITS OWN day, not the whole feed.
-export function groupFeedByDay(entries, todayStr, limit = 12) {
+export function groupFeedByDay(entries, todayStr, limit = FEED_VISIBLE_LIMIT) {
   const items = [...entries]
     .sort((a, b) => b.date === a.date ? b.updatedAt - a.updatedAt : (b.date < a.date ? -1 : 1))
     .slice(0, limit);

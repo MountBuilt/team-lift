@@ -675,7 +675,7 @@ describe('feedLines helpers', () => {
     assert.deepEqual(jobs.map(e => e.id), ['u_2026-09-24']);
   });
 
-  it('collectFeedLineJobs still takes yesterday when nothing fresher is waiting', () => {
+  it('collectFeedLineJobs refills the newest visible row, then the one behind it', () => {
     const jobs = collectFeedLineJobs({
       entries: [
         { id: 'u_2026-09-23', userId: 'u', name: 'Simon', date: '2026-09-23', steps: 4000, updatedAt: 1 },
@@ -685,6 +685,15 @@ describe('feedLines helpers', () => {
       today: '2026-09-24'
     });
     assert.deepEqual(jobs.map(e => e.id), ['u_2026-09-23']);
+    const next = collectFeedLineJobs({
+      entries: [
+        { id: 'u_2026-09-23', userId: 'u', name: 'Simon', date: '2026-09-23', steps: 4000, updatedAt: 1 },
+        { id: 'u_2026-09-22', userId: 'u', name: 'Simon', date: '2026-09-22', steps: 4000, updatedAt: 2 }
+      ],
+      feedLines: { 'u_2026-09-23': { text: 'done', at: 't' } },
+      today: '2026-10-04'
+    });
+    assert.deepEqual(next.map(e => e.id), ['u_2026-09-22']);
   });
 
   it('purgeStaleFeedLines and feedLineWritePlan', () => {
@@ -695,6 +704,19 @@ describe('feedLines helpers', () => {
     const purged = purgeStaleFeedLines(map, { today: '2026-07-19' });
     assert.equal(purged['u_2026-07-10'], undefined);
     assert.ok(purged['u_2026-07-18']);
+
+    const kept = purgeStaleFeedLines({
+      'u_2026-09-20': { text: 'still on the board', at: 't' },
+      'u_2026-08-01': { text: 'left the feed', at: 't' }
+    }, {
+      today: '2026-10-04',
+      entries: [
+        { id: 'u_2026-09-20', date: '2026-09-20', updatedAt: 1 },
+        { id: 'u_2026-10-01', date: '2026-10-01', updatedAt: 2 }
+      ]
+    });
+    assert.equal(kept['u_2026-09-20'].text, 'still on the board');
+    assert.equal(kept['u_2026-08-01'], undefined);
 
     const plan = feedLineWritePlan(map, {
       'u_2026-07-18': { text: 'ok', at: 't' },

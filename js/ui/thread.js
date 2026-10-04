@@ -330,7 +330,55 @@ function renderPanel(panel, target) {
   applyThreadScroll(panel, target);
 }
 
+/**
+ * Once the chat list cannot scroll any further, keep the same wheel or
+ * finger moving the page. Browsers trap that gesture inside overflow:auto
+ * even with overscroll-behavior:auto, which is why the open coach chat
+ * felt stuck unless you scrolled the thin margin beside it.
+ */
+function handoffScrollAtEdge(list) {
+  if (!list || list.dataset.scrollHandoff) return;
+  list.dataset.scrollHandoff = '1';
+  const page = () => document.scrollingElement || document.documentElement;
+  const edge = () => {
+    const max = list.scrollHeight - list.clientHeight;
+    return {
+      atTop: list.scrollTop <= 0,
+      atBottom: list.scrollTop >= max - 1
+    };
+  };
+  const pixels = (event) => {
+    if (event.deltaMode === 1) return event.deltaY * 16;
+    if (event.deltaMode === 2) return event.deltaY * window.innerHeight;
+    return event.deltaY;
+  };
+  list.addEventListener('wheel', (event) => {
+    const dy = pixels(event);
+    if (!dy) return;
+    const { atTop, atBottom } = edge();
+    if (!((dy < 0 && atTop) || (dy > 0 && atBottom))) return;
+    event.preventDefault();
+    page().scrollTop += dy;
+  }, { passive: false });
+  let lastY = 0;
+  list.addEventListener('touchstart', (event) => {
+    lastY = event.touches[0]?.clientY ?? 0;
+  }, { passive: true });
+  list.addEventListener('touchmove', (event) => {
+    const y = event.touches[0]?.clientY;
+    if (y == null) return;
+    const dy = lastY - y;
+    lastY = y;
+    if (!dy) return;
+    const { atTop, atBottom } = edge();
+    if (!((dy < 0 && atTop) || (dy > 0 && atBottom))) return;
+    event.preventDefault();
+    page().scrollTop += dy;
+  }, { passive: false });
+}
+
 function bindPanel(panel, target) {
+  handoffScrollAtEdge(panel.querySelector('.thread-list'));
   const send = panel.querySelector(`[data-thread-send="${CSS.escape(target)}"]`);
   const input = panel.querySelector(`[data-thread-input="${CSS.escape(target)}"]`);
   const earlier = panel.querySelector(`[data-thread-earlier="${CSS.escape(target)}"]`);

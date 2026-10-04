@@ -188,7 +188,11 @@ nav.safe-top > .tab {
    stretch the dashboard. Opens scrolled to bottom; load-earlier prepends. */
 .thread-list {
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Chain into the page once the chat hits its top or bottom. `contain`
+     trapped the gesture, so a finger or wheel over the open chat could
+     not move the dashboard. The handoff in thread.js covers browsers
+     that still swallow the event at the edge. */
+  overscroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
   padding-right: 0.25rem;
 }

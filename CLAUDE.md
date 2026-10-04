@@ -124,9 +124,10 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   stay tappable under the notch (`black-translucent` + `viewport-fit=cover`).
 - **Recent activity gets one fresh caption.** `factualFeedLine(entry)` shows
   until the tick writes `feedLines[entryId]`. `collectFeedLineJobs` returns
-  the single newest log from today or yesterday that has no line yet
-  (2026-09-24). Older rows stay factual. Do not batch a backlog in one mood.
-  A big-effort feed line is `wired`, not `grandiose`. No absolute kg.
+  the single newest log still on the board (the newest 12) that has no line
+  yet. A caption stays while that row is visible. Purging at 3 days blanked
+  the whole feed on a quiet week (2026-10-04). Do not batch a backlog in one
+  mood. A big-effort feed line is `wired`, not `grandiose`. No absolute kg.
 - **Aiden reacts as a comment only when spoken to (2026-08-02).** Parent is
   Aiden's voice again, so unprompted feed praise stays off. `collectThreadJobs`
   is human-led only.
@@ -169,7 +170,9 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
     role?, reportDay? }`.
   - User text max 160, Aiden 240, feed line 200. Author can bin own messages.
   - Delete **before** Aiden answers → hard remove; **after** → soft-delete.
-  - Feed threads purged on **date only** (3 days). Report messages 5 days.
+  - Feed threads and `feedLines` stay while the row is in the newest 12.
+    Without an entry roster the tick still falls back to a 3-day date purge.
+    Report messages 5 days.
     Aged report-thread lines are digested into `memory` on purge (weekly
     wipe no longer feeds memory). Digest `day` is when they spoke, not the
     purge date; context adds `when` so Aiden cannot call a 5-day-old line

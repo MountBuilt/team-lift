@@ -19,6 +19,9 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shouldWakeOnBanter, WAKE_DEBOUNCE_MS } from './lib/wake.mjs';
+import {
+  exitCodeForError, backoffSecondsForExit, EXIT_FIRESTORE_QUOTA
+} from './lib/tick-exit.mjs';
 
 // Same public client config the web app ships (js/config.js) — not a secret.
 const firebaseConfig = {
@@ -104,7 +107,17 @@ onSnapshot(
   },
   (err) => {
     log(`onSnapshot error: ${err.message}`);
-    // Let systemd Restart=always pick us up if the stream is dead.
+    // A 429 used to exit straight into RestartSec=5, so the listener
+    // re-attached all day while Spark was empty. Sleep until the reset,
+    // then exit and let systemd attach once.
+    if (exitCodeForError(err) === EXIT_FIRESTORE_QUOTA) {
+      const wait = backoffSecondsForExit(EXIT_FIRESTORE_QUOTA, new Date());
+      const until = new Date(Date.now() + wait * 1000).toISOString();
+      log(`Spark quota spent. Sleeping ${wait}s until ${until}, then restarting the listener.`);
+      setTimeout(() => process.exit(0), wait * 1000);
+      return;
+    }
+    // Any other dead stream: let systemd Restart=always pick us up.
     process.exit(1);
   }
 );

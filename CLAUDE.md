@@ -48,9 +48,10 @@ when orchestrator/watcher code changed.
   (`teamlift-banter.timer`, every 2 min). Hand/dry-run from any machine:
   `bash scripts/refresh-banter.sh` (wrapper for `node scripts/orchestrator.mjs`;
   supports `--dry-run` and `--send-test <userId>`; logs to
-  `~/.local/state/teamlift/banter.log`; silent for idle ticks). A 429 or
-  Grok 402 writes `~/.local/state/teamlift/backoff_until` so the timer
-  does not full-fetch the roster every interval. Install / cutover:
+  `~/.local/state/teamlift/banter.log`; silent for idle ticks). A 429 writes
+  `~/.local/state/teamlift/backoff_until` at the next midnight Pacific, and
+  the 2 min timer is the alarm that starts the tick again. Any other failure
+  waits 30 min. A 5 min retry spent the Spark cap (2026-10-01). Install / cutover:
   `docs/ops-nuc.md`
 - Tailwind rebuild (needed whenever HTML/JS gains a utility class not already
   in use): `npx tailwindcss@3.4.17 -i css/tailwind.source.css -o css/tailwind.css --minify`
@@ -186,16 +187,18 @@ Full detail: `docs/superpowers/specs/2026-08-07-home-stats-ai-feed-design.md`
   `teamlift-banter.timer` every 2 min covers clock jobs (report/push) and missed
   events. `probeWork()` still reads two config docs and exits if idle — stay on
   Spark free tier (no polling loops). Don't add per-tick work that needs a full
-  fetch on every safety tick. Failed ticks (Firestore 429, Grok 402) write a
-  local backoff file so they cannot full-fetch the roster in a loop.
+  fetch on every safety tick. A Firestore 429 writes a local backoff file
+  stamped at the next midnight Pacific, and the 2 min timer starts the tick
+  again then. Any other failure waits 30 min, so a broken model cannot
+  full-fetch the roster every few minutes and spend the Spark cap.
 - **Aiden-is-typing dots.** `aidenThinkingState()` drives a 3-dot indicator in
   the thread while a comment waits on a reply, so the crew waits instead of
   assuming they were ignored. It gives up after `THINKING_WINDOW_MINUTES` so a
   broken tick leaves a quiet thread, not Aiden typing forever.
 - **Copy backend:** `scripts/lib/copywriter.mjs`. Default is **SuperGrok**
   via `grok -p` (Grok Build OAuth at `~/.grok/auth.json`, no console.x.ai
-  metered bill). Child env strips `XAI_API_KEY` so systemd/launchd cannot
-  silently burn API credits. Measured ~6s for a structured thread-shaped call.
+  metered bill), model alias `grok-4.7`. Child env strips `XAI_API_KEY` so
+  systemd/launchd cannot silently burn API credits. Measured ~6s for a structured thread-shaped call.
   Fallbacks: `claude -p` (Claude Pro), then Anthropic Messages API if
   `~/.config/teamlift/anthropic-key` is set. Force with
   `TEAM_LIFT_COPY_BACKEND=grok|claude|api`. Both CLI paths need **stdin

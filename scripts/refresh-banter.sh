@@ -39,10 +39,11 @@ WAKE="${TEAM_LIFT_WAKE:-manual}"
 mkdir -p "$STATE"
 touch "$LOG"
 
-# Local backoff after 429/402. A failed model call used to leave pendingAt
-# hot, so the safety timer full-fetched users+entries every 30s until Spark
-# quota died and Aiden went silent. This file is the circuit breaker that
-# works even when Firestore itself is 429.
+# Local backoff. The duration lives in scripts/lib/tick-exit.mjs so the shell
+# and the watcher agree. A 429 waits until midnight Pacific (Spark reset);
+# the 2 min timer is the alarm that starts the tick again. Any other failure
+# waits 30 min. A 5 min retry full-fetched the roster often enough to spend
+# the daily cap (2026-10-01). This file works even when Firestore itself is 429.
 now_ts="$(date +%s)"
 if [ -f "$BACKOFF_FILE" ]; then
   until_ts="$(tr -cd '0-9' < "$BACKOFF_FILE" 2>/dev/null || true)"
@@ -60,10 +61,18 @@ apply_backoff() {
     rm -f "$BACKOFF_FILE"
     return
   fi
-  if [ "$code" -eq 2 ] || [ "$code" -eq 3 ]; then
-    wait=3600
-  else
-    wait=300
+  # Same numbers the tests pin. Fall back to 30 min if node cannot answer.
+  wait="$(node --input-type=module -e "
+    import { backoffSecondsForExit } from '$REPO/scripts/lib/tick-exit.mjs';
+    const code = Number(process.argv[1]);
+    process.stdout.write(String(backoffSecondsForExit(code, new Date())));
+  " "$code" 2>/dev/null || true)"
+  case "$wait" in
+    ''|*[!0-9]*) wait=1800 ;;
+  esac
+  if [ "$wait" -eq 0 ]; then
+    rm -f "$BACKOFF_FILE"
+    return
   fi
   echo $(( $(date +%s) + wait )) > "$BACKOFF_FILE"
 }

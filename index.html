@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Team Lift is shut</title>
+  <meta name="theme-color" content="#0f0f0f">
+  <meta name="robots" content="noindex">
+  <meta name="description" content="Team Lift is shut. Nobody was using it.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Team Lift">
+  <link rel="icon" href="icons/icon-192.png">
+  <style>
+    @font-face {
+      font-family: 'Anton';
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url('fonts/anton-latin.woff2') format('woff2');
+    }
+    :root {
+      color-scheme: dark;
+      --ember: #f97316;
+      --flame: #fbbf24;
+      --ink: #0f0f0f;
+      --heat: linear-gradient(135deg, #f97316 20%, #fbbf24 100%);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--ink); }
+    body {
+      font-family: -apple-system, "Inter", "Segoe UI", Roboto, sans-serif;
+      color: #f5f5f5;
+      min-height: 100dvh;
+    }
+    .wrap {
+      max-width: 28rem;
+      margin: 0 auto;
+      min-height: 100dvh;
+      padding:
+        calc(1.75rem + env(safe-area-inset-top, 0px))
+        1.35rem
+        calc(2rem + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      flex-direction: column;
+    }
+    .glow {
+      position: relative;
+    }
+    .glow::before {
+      content: "";
+      position: absolute;
+      left: -2rem;
+      right: -2rem;
+      top: -3rem;
+      height: 11rem;
+      background: radial-gradient(ellipse at 20% 40%, rgba(249, 115, 22, 0.28), transparent 68%);
+      pointer-events: none;
+    }
+    .eyebrow {
+      position: relative;
+      margin: 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #737373;
+    }
+    h1 {
+      position: relative;
+      margin: 0.35rem 0 0;
+      font-family: 'Anton', 'Arial Narrow', sans-serif;
+      font-weight: 400;
+      font-size: clamp(3.4rem, 18vw, 5.2rem);
+      line-height: 0.86;
+      letter-spacing: 0.02em;
+    }
+    .heat {
+      background: var(--heat);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .copy {
+      margin: 1.6rem 0 0;
+      padding-left: 0.85rem;
+      border-left: 3px solid var(--ember);
+      color: #d4d4d4;
+      font-size: 1.05rem;
+      line-height: 1.45;
+    }
+    .copy p { margin: 0 0 0.85rem; }
+    .copy p:last-child { margin-bottom: 0; }
+    .stage {
+      margin-top: auto;
+      padding-top: 2.25rem;
+    }
+    button {
+      appearance: none;
+      width: 100%;
+      min-height: 5.5rem;
+      border: 0;
+      border-radius: 1.1rem;
+      background: var(--heat);
+      color: #1a0b00;
+      font-family: 'Anton', 'Arial Narrow', sans-serif;
+      font-size: 2.4rem;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    button:active { transform: translateY(1px); }
+    button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+    .count {
+      margin: 0.75rem 0 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #737373;
+    }
+    .done {
+      margin: 0;
+      padding: 1.35rem 1rem;
+      border-radius: 1.1rem;
+      background: #1a1a1a;
+      text-align: center;
+    }
+    .done strong {
+      display: block;
+      font-family: 'Anton', 'Arial Narrow', sans-serif;
+      font-size: 3rem;
+      font-weight: 400;
+      letter-spacing: 0.03em;
+      color: var(--flame);
+    }
+    .done span {
+      display: block;
+      margin-top: 0.35rem;
+      color: #a3a3a3;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="glow">
+      <p class="eyebrow">Team Lift · shut</p>
+      <h1>GOOD OF<br>YOU FOR<br><span class="heat">TURNING UP</span></h1>
+    </header>
+    <div class="copy">
+      <p>This place has been shut down because no one was using it. Aiden has gone home.</p>
+      <p id="order">Drop and give me 20.</p>
+    </div>
+    <div class="stage" id="stage">
+      <button type="button" id="drop">DROP</button>
+      <p class="count" id="count">0 of 20</p>
+    </div>
+  </main>
+  <script>
+    // Installed phones still have the old app cached. Clear it and do not
+    // register another worker. Nothing here talks to Firebase.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(async (regs) => {
+        if (!regs.length) return;
+        await Promise.all(regs.map((r) => r.unregister()));
+        if (navigator.serviceWorker.controller) location.reload();
+      });
+    }
+
+    const drop = document.getElementById('drop');
+    const count = document.getElementById('count');
+    const order = document.getElementById('order');
+    const stage = document.getElementById('stage');
+    let n = 0;
+    drop.addEventListener('click', () => {
+      n += 1;
+      if (navigator.vibrate) navigator.vibrate(12);
+      if (n >= 20) {
+        order.textContent = 'That is the lot.';
+        stage.innerHTML = '<div class="done"><strong>20</strong><span>Now get up. The door is locked behind you.</span></div>';
+        return;
+      }
+      drop.textContent = String(n);
+      count.textContent = n + ' of 20';
+    });
+  </script>
+</body>
+</html>
